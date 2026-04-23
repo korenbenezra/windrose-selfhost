@@ -1,3 +1,4 @@
 python-telegram-bot[job-queue]>=22.7,<23
 python-dotenv>=1.0,<2
 watchdog>=4.0,<5
+psutil>=5.9,<7

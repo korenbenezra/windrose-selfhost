@@ -4,3 +4,5 @@
 claude-flow/
 .mcp.json
 CLAUDE.md
+__pycache__/
+.pytest_cache/
