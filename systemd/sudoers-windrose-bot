@@ -1,0 +1,13 @@
+# /etc/sudoers.d/windrose-bot
+# Scoped grant: the bot user may run ONLY these systemctl verbs on ONLY windrose.service.
+# No wildcards, no shell escapes.  Mode must be 0440.
+# Installed by scripts/install_service.sh — do not edit directly.
+# ADR-003 (systemd bot control), ADR-007 (access control scoping)
+
+BOT_USER_PLACEHOLDER ALL=(root) NOPASSWD: \
+    /bin/systemctl start windrose.service, \
+    /bin/systemctl stop windrose.service, \
+    /bin/systemctl restart windrose.service, \
+    /bin/systemctl status windrose.service, \
+    /bin/systemctl is-active windrose.service, \
+    /bin/systemctl show windrose.service

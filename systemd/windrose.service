@@ -1,0 +1,44 @@
+# windrose.service — Windrose dedicated server (Wine on Ubuntu 24.04)
+# ADR-002 (Wine), ADR-003 (systemd hardening + resource caps)
+#
+# WINDROSE_USER_PLACEHOLDER is stamped with the real username by install_service.sh.
+
+[Unit]
+Description=Windrose Dedicated Server (Wine)
+Wants=network-online.target
+After=syslog.target network-online.target
+
+[Service]
+Type=simple
+User=WINDROSE_USER_PLACEHOLDER
+WorkingDirectory=/home/WINDROSE_USER_PLACEHOLDER/windrose
+
+# Wine and display environment (ADR-002)
+Environment=WINEPREFIX=/home/WINDROSE_USER_PLACEHOLDER/windrose/pfx
+Environment=WINEDEBUG=-all
+Environment=DISPLAY=:99
+
+ExecStart=/home/WINDROSE_USER_PLACEHOLDER/windrose/start_windrose.sh
+
+# Restart on non-zero exit; don't fight a deliberate systemctl stop (ADR-003)
+Restart=on-failure
+RestartSec=5
+
+# Resource caps — generous for 2-5 players, protects the rest of the laptop (ADR-003)
+MemoryMax=10G
+CPUQuota=350%
+
+# Log to journald (ADR-003)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=windrose
+
+# Hardening (ADR-003: safe for Wine/UE5 workloads)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/home/WINDROSE_USER_PLACEHOLDER/windrose /home/WINDROSE_USER_PLACEHOLDER/log
+
+[Install]
+WantedBy=multi-user.target
