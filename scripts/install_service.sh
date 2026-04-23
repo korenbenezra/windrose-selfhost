@@ -23,7 +23,6 @@ echo "    BOT_USER      : $BOT_USER"
 # ---------------------------------------------------------------------------
 stamp_unit() {
   local src="$1"
-  local dst="$2"
 
   if [[ ! -f "$src" ]]; then
     echo "FATAL: source unit not found: $src" >&2

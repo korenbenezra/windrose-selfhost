@@ -23,6 +23,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
+from telegram.error import InvalidToken
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -77,6 +78,25 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s -- %(message)s",
 )
 log = logging.getLogger("windrose-bot")
+
+# ---------------------------------------------------------------------------
+# Runtime config validation
+# ---------------------------------------------------------------------------
+def _validate_runtime_config() -> None:
+    token = BOT_TOKEN.strip()
+    if not token or token == "your-telegram-bot-token-here":
+        raise SystemExit(
+            "Invalid BOT_TOKEN in .env (placeholder value detected). "
+            "Set BOT_TOKEN to the real token from BotFather."
+        )
+
+    # Telegram bot tokens are "<digits>:<secret>"; validate shape early so
+    # service logs are actionable even before first network call.
+    if not re.fullmatch(r"\d{6,}:[A-Za-z0-9_-]{20,}", token):
+        raise SystemExit(
+            "Invalid BOT_TOKEN format in .env. Expected '<bot_id>:<secret>' "
+            "(example: 123456789:AA...)."
+        )
 
 # ---------------------------------------------------------------------------
 # Access control (ADR-007)
@@ -499,6 +519,7 @@ def build_app() -> Application:
 
 
 def main() -> None:
+    _validate_runtime_config()
     app = build_app()
     app.add_handler(CommandHandler("start",   cmd_start))
     app.add_handler(CommandHandler("status",  cmd_status))
@@ -511,7 +532,13 @@ def main() -> None:
     app.add_handler(CommandHandler("update",  cmd_update))
     app.add_handler(CallbackQueryHandler(button_handler))
     log.info("Windrose bot starting (long polling)")
-    app.run_polling()
+    try:
+        app.run_polling()
+    except InvalidToken:
+        raise SystemExit(
+            "Telegram rejected BOT_TOKEN from .env. "
+            "Check token value and restart windrose-bot."
+        )
 
 
 if __name__ == "__main__":
