@@ -1,3 +1,4 @@
 # Local assistant/tooling artifacts
 .claude/
 .claude-flow/.mcp.json
+CLAUDE.md
