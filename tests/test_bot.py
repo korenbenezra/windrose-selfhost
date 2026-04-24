@@ -1,5 +1,5 @@
 """
-Unit tests for bot.py Phase 2 features.
+Unit tests for bot.py.
 
 Tests run without a live Telegram connection — all external calls are mocked.
 Run: pytest tests/test_bot.py -v
@@ -70,11 +70,18 @@ def _install_stubs() -> None:
         _stub_module("telegram.error", InvalidToken=Exception),
     )
 
+    # ConversationHandler stub with END = -1 (matches PTB real value)
+    class _ConvHandler:
+        END = -1
+        def __init__(self, **kwargs):
+            pass
+
     tg_ext = _stub_module("telegram.ext")
     tg_ext.Application = MagicMock
     tg_ext.ApplicationBuilder = MagicMock
     tg_ext.CallbackQueryHandler = MagicMock
     tg_ext.CommandHandler = MagicMock
+    tg_ext.ConversationHandler = _ConvHandler
     tg_ext.ContextTypes = MagicMock(DEFAULT_TYPE=MagicMock)
     tg_ext.MessageHandler = MagicMock
     tg_ext.filters = MagicMock(TEXT=MagicMock(), COMMAND=MagicMock())
@@ -123,7 +130,6 @@ def reset(tmp_path):
     _reset_state()
     original_path = bot.STATE_PATH
     bot.STATE_PATH = tmp_path / "state.json"
-    # Seed notify_only for access-control scenarios
     bot._STATE["users"]["notify_only"] = [NOTIFY_ID]
     yield
     bot.STATE_PATH = original_path
@@ -142,11 +148,15 @@ def _make_update(uid: int, text: str = "/start") -> MagicMock:
     user = MagicMock()
     user.id = uid
     user.username = f"user_{uid}"
+    user.first_name = f"User{uid}"
     message = MagicMock()
     message.text = text
+    message.message_id = 42
     message.reply_text = AsyncMock()
     update = MagicMock()
     update.effective_user = user
+    update.effective_chat = MagicMock()
+    update.effective_chat.id = uid
     update.message = message
     update.callback_query = None
     return update
@@ -155,12 +165,16 @@ def _make_update(uid: int, text: str = "/start") -> MagicMock:
 def _make_callback(uid: int, callback_data: str) -> MagicMock:
     user = MagicMock()
     user.id = uid
+    user.username = f"user_{uid}"
+    user.first_name = f"User{uid}"
     query = MagicMock()
     query.data = callback_data
     query.answer = AsyncMock()
     query.edit_message_text = AsyncMock()
     update = MagicMock()
     update.effective_user = user
+    update.effective_chat = MagicMock()
+    update.effective_chat.id = uid
     update.message = None
     update.callback_query = query
     return update
@@ -170,6 +184,7 @@ def _make_context(user_data=None) -> MagicMock:
     ctx = MagicMock()
     ctx.user_data = user_data if user_data is not None else {}
     ctx.bot.send_message = AsyncMock()
+    ctx.bot.delete_message = AsyncMock()
     ctx.application = MagicMock()
     return ctx
 
@@ -246,7 +261,7 @@ class TestStatePersistence:
         bot._load_state()
         assert bot._STATE["known_players"] == ["Zara"]
         assert bot._STATE["schedule_enabled"] is True
-        assert bot._STATE["schedule_time"] == "03:00"  # default preserved
+        assert bot._STATE["schedule_time"] == "03:00"
 
     def test_atomic_write_no_tmp_left(self, tmp_path):
         bot.STATE_PATH = tmp_path / "state.json"
@@ -356,14 +371,14 @@ class TestNotifyWaitlist:
 
 
 # ===========================================================================
-# Idle auto-stop
+# Idle auto-stop  (ADR-009: _container_running and _docker_stop are now async)
 # ===========================================================================
 class TestIdleAutostop:
     def test_resets_when_players_active(self):
         bot._STATE["sessions_active"] = {"Alice": bot._now_iso()}
         bot._STATE["idle_empty_since"] = "2026-01-01T00:00:00Z"
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=True):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=True)):
             run(bot._idle_autostop_job(ctx))
         assert bot._STATE["idle_empty_since"] is None
 
@@ -371,7 +386,7 @@ class TestIdleAutostop:
         bot._STATE["sessions_active"] = {}
         bot._STATE["idle_empty_since"] = None
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=True):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=True)):
             run(bot._idle_autostop_job(ctx))
         assert bot._STATE["idle_empty_since"] is not None
 
@@ -385,7 +400,7 @@ class TestIdleAutostop:
         ).isoformat().replace("+00:00", "Z")
         bot._STATE["idle_empty_since"] = idle_since
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=True):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=True)):
             run(bot._idle_autostop_job(ctx))
         assert bot._STATE["idle_warning_sent"] is True
         ctx.bot.send_message.assert_awaited()
@@ -399,19 +414,21 @@ class TestIdleAutostop:
         ).isoformat().replace("+00:00", "Z")
         bot._STATE["idle_empty_since"] = idle_since
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=True), \
-             patch.object(bot, "_docker_stop") as mock_stop:
+        mock_stop = AsyncMock()
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=True)), \
+             patch.object(bot, "_docker_stop", mock_stop):
             run(bot._idle_autostop_job(ctx))
-        mock_stop.assert_called_once()
+        mock_stop.assert_awaited_once()
         assert bot._STATE["idle_empty_since"] is None
 
     def test_noop_when_container_not_running(self):
         bot._STATE["sessions_active"] = {}
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=False), \
-             patch.object(bot, "_docker_stop") as mock_stop:
+        mock_stop = AsyncMock()
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=False)), \
+             patch.object(bot, "_docker_stop", mock_stop):
             run(bot._idle_autostop_job(ctx))
-        mock_stop.assert_not_called()
+        mock_stop.assert_not_awaited()
 
 
 # ===========================================================================
@@ -451,16 +468,16 @@ class TestResourceAlerts:
 
 
 # ===========================================================================
-# Sys info text
+# Sys info text  (ADR-009: _build_sysinfo_text and _container_status are now async)
 # ===========================================================================
 class TestSysInfoText:
     def test_contains_all_sections(self):
         with patch("psutil.cpu_percent", return_value=78.0), \
              patch("psutil.virtual_memory", return_value=MagicMock(percent=65.0)), \
              patch("psutil.disk_usage", return_value=MagicMock(percent=42.0)), \
-             patch.object(bot, "_container_status", return_value="running"), \
+             patch.object(bot, "_container_status", new=AsyncMock(return_value="running")), \
              patch.object(bot, "_container_uptime", return_value="2h 15m 00s"):
-            text = bot._build_sysinfo_text()
+            text = run(bot._build_sysinfo_text())
         assert "CPU:" in text
         assert "RAM:" in text
         assert "Disk:" in text
@@ -511,13 +528,13 @@ class TestScenarioAdminStart:
 
 
 # ===========================================================================
-# Scenario 2 — Notify Me button (server stopped → subscribe; server up → reply)
+# Scenario 2 — Notify Me button
 # ===========================================================================
 class TestScenarioNotifyMeButton:
     def test_subscribe_when_stopped(self):
         update = _make_callback(NOTIFY_ID, "v2_notify_sub")
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=False):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=False)):
             run(bot.button_handler(update, ctx))
         assert NOTIFY_ID in bot._STATE["notify_waitlist"]
         text = update.callback_query.edit_message_text.call_args[0][0]
@@ -526,7 +543,7 @@ class TestScenarioNotifyMeButton:
     def test_already_running_message(self):
         update = _make_callback(NOTIFY_ID, "v2_notify_sub")
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=True):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=True)):
             run(bot.button_handler(update, ctx))
         assert NOTIFY_ID not in bot._STATE["notify_waitlist"]
         text = update.callback_query.edit_message_text.call_args[0][0]
@@ -535,13 +552,13 @@ class TestScenarioNotifyMeButton:
     def test_subscribe_idempotent(self):
         bot._STATE["notify_waitlist"] = [NOTIFY_ID]
         update = _make_callback(NOTIFY_ID, "v2_notify_sub")
-        with patch.object(bot, "_container_running", return_value=False):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=False)):
             run(bot.button_handler(update, _make_context()))
         assert bot._STATE["notify_waitlist"].count(NOTIFY_ID) == 1
 
 
 # ===========================================================================
-# Scenario 3 — Notify-only and stranger blocked from admin actions
+# Scenario 3 — Access enforcement
 # ===========================================================================
 class TestScenarioAccessEnforcement:
     def test_notify_only_blocked_from_settings(self):
@@ -569,7 +586,7 @@ class TestScenarioAccessEnforcement:
 
 
 # ===========================================================================
-# Scenario 4 — Admin stop flow (ask → confirm; ask → cancel)
+# Scenario 4 — Admin stop flow
 # ===========================================================================
 class TestScenarioStopFlow:
     def test_stop_ask_shows_confirmation(self):
@@ -580,9 +597,10 @@ class TestScenarioStopFlow:
 
     def test_confirmed_stop_calls_docker(self):
         update = _make_callback(ADMIN_ID, "cb_confirmed_stop")
-        with patch.object(bot, "_docker_stop") as mock_stop:
+        mock_stop = AsyncMock()
+        with patch.object(bot, "_docker_stop", mock_stop):
             run(bot.button_handler(update, _make_context()))
-        mock_stop.assert_called_once()
+        mock_stop.assert_awaited_once()
 
     def test_cancel_returns_to_main_panel(self):
         update = _make_callback(ADMIN_ID, "cb_panel")
@@ -592,72 +610,100 @@ class TestScenarioStopFlow:
 
 
 # ===========================================================================
-# Scenario 5 — Add notify user (happy + invalid ID)
+# Scenario 5 — Add notify user (ADR-011: tests the ConversationHandler functions)
 # ===========================================================================
 class TestScenarioAddNotifyUser:
-    def test_happy_path(self):
-        # Step 1: tap button to start flow
-        update_btn = _make_callback(ADMIN_ID, "v2_users_add_notify")
+    def test_ask_sets_fsm_name(self):
+        update = _make_callback(ADMIN_ID, "v2_users_add_notify")
         ctx = _make_context()
-        run(bot.button_handler(update_btn, ctx))
-        assert ctx.user_data.get("waiting_for") == "add_notify_id"
+        run(bot._flow_add_notify_ask(update, ctx))
+        assert ctx.user_data.get("_fsm_name") == "ADD_NOTIFY"
 
-        # Step 2: send ID
+    def test_receive_happy_path(self):
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="555")
-        run(bot.message_handler(update_msg, ctx))
+        run(bot._flow_add_notify_receive(update_msg, ctx))
         assert 555 in bot._STATE["users"]["notify_only"]
         reply = update_msg.message.reply_text.call_args[0][0]
         assert "555" in reply
 
-    def test_invalid_id_rejected(self):
-        ctx = _make_context({"waiting_for": "add_notify_id"})
+    def test_receive_invalid_id_rejected(self):
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="not_a_number")
-        run(bot.message_handler(update_msg, ctx))
+        run(bot._flow_add_notify_receive(update_msg, ctx))
         assert len(bot._STATE["users"]["notify_only"]) == 1  # only the seeded NOTIFY_ID
         reply = update_msg.message.reply_text.call_args[0][0]
         assert "Invalid" in reply
 
-    def test_add_admin_flow(self):
-        ctx = _make_context({"waiting_for": "add_admin_id"})
+    def test_receive_invalid_stays_in_waiting(self):
+        ctx = _make_context()
+        update_msg = _make_update(ADMIN_ID, text="not_a_number")
+        state = run(bot._flow_add_notify_receive(update_msg, ctx))
+        assert state == bot._WAITING
+
+    def test_receive_success_ends_conversation(self):
+        from telegram.ext import ConversationHandler
+        ctx = _make_context()
+        update_msg = _make_update(ADMIN_ID, text="555")
+        state = run(bot._flow_add_notify_receive(update_msg, ctx))
+        assert state == ConversationHandler.END
+
+    def test_add_admin_receive(self):
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="777")
-        run(bot.message_handler(update_msg, ctx))
+        run(bot._flow_add_admin_receive(update_msg, ctx))
         assert 777 in bot._STATE["users"]["admins"]
+
+    def test_add_admin_ask_sets_fsm_name(self):
+        update = _make_callback(ADMIN_ID, "v2_users_add_admin")
+        ctx = _make_context()
+        run(bot._flow_add_admin_ask(update, ctx))
+        assert ctx.user_data.get("_fsm_name") == "ADD_ADMIN"
 
 
 # ===========================================================================
-# Scenario 6 — Change password (blocked while running; allowed when stopped)
+# Scenario 6 — Change password (ADR-011 + ADR-013)
 # ===========================================================================
 class TestScenarioPasswordChange:
     def test_blocked_when_running(self):
         update = _make_callback(ADMIN_ID, "v2_settings_changepw")
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=True):
-            run(bot.button_handler(update, ctx))
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=True)):
+            run(bot._flow_changepw_ask(update, ctx))
         text = update.callback_query.edit_message_text.call_args[0][0]
         assert "stop" in text.lower()
-        assert ctx.user_data.get("waiting_for") is None
+        assert ctx.user_data.get("_fsm_name") is None
 
     def test_prompts_when_stopped(self):
         update = _make_callback(ADMIN_ID, "v2_settings_changepw")
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=False):
-            run(bot.button_handler(update, ctx))
-        assert ctx.user_data.get("waiting_for") == "new_password"
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=False)):
+            run(bot._flow_changepw_ask(update, ctx))
+        assert ctx.user_data.get("_fsm_name") == "CHANGE_PASSWORD"
+        assert ctx.user_data.get("_fsm_sensitive") is True
 
     def test_password_message_writes_file(self, tmp_path):
         desc_file = tmp_path / "ServerDescription.json"
         desc_file.write_text(json.dumps({"InviteCode": "ABC", "ServerPassword": "old"}))
-        ctx = _make_context({"waiting_for": "new_password"})
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="newpass123")
-        with patch.object(bot, "SERVER_DESC_PATH", desc_file), \
-             patch.object(bot, "_container_running", return_value=False):
-            run(bot.message_handler(update_msg, ctx))
+        with patch.object(bot, "SERVER_DESC_PATH", desc_file):
+            run(bot._flow_changepw_receive(update_msg, ctx))
         assert json.loads(desc_file.read_text())["ServerPassword"] == "newpass123"
+
+    def test_password_message_is_deleted(self, tmp_path):
+        desc_file = tmp_path / "ServerDescription.json"
+        desc_file.write_text(json.dumps({"InviteCode": "ABC", "ServerPassword": "old"}))
+        ctx = _make_context()
+        update_msg = _make_update(ADMIN_ID, text="secret")
+        with patch.object(bot, "SERVER_DESC_PATH", desc_file):
+            run(bot._flow_changepw_receive(update_msg, ctx))
+        ctx.bot.delete_message.assert_awaited_once()
 
     def test_remove_password_blocked_when_running(self):
         update = _make_callback(ADMIN_ID, "v2_settings_removepw_confirmed")
         ctx = _make_context()
-        with patch.object(bot, "_container_running", return_value=True):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=True)):
             run(bot.button_handler(update, ctx))
         text = update.callback_query.edit_message_text.call_args[0][0]
         assert "stop" in text.lower()
@@ -667,13 +713,13 @@ class TestScenarioPasswordChange:
         desc_file.write_text(json.dumps({"InviteCode": "ABC", "ServerPassword": "secret"}))
         update = _make_callback(ADMIN_ID, "v2_settings_removepw_confirmed")
         with patch.object(bot, "SERVER_DESC_PATH", desc_file), \
-             patch.object(bot, "_container_running", return_value=False):
+             patch.object(bot, "_container_running", new=AsyncMock(return_value=False)):
             run(bot.button_handler(update, _make_context()))
         assert json.loads(desc_file.read_text())["ServerPassword"] == ""
 
 
 # ===========================================================================
-# Scenario 7 — Schedule toggle and set time
+# Scenario 7 — Schedule toggle and set time (ADR-011: set time uses flow fn)
 # ===========================================================================
 class TestScenarioSchedule:
     def test_view_disabled(self):
@@ -710,23 +756,31 @@ class TestScenarioSchedule:
         assert bot._STATE["schedule_enabled"] is False
 
     def test_set_time_valid(self):
-        ctx = _make_context({"waiting_for": "schedule_time"})
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="04:30")
-        run(bot.message_handler(update_msg, ctx))
+        with patch.object(bot, "_cancel_scheduled_restart"), \
+             patch.object(bot, "_register_scheduled_restart"):
+            run(bot._flow_schedule_receive(update_msg, ctx))
         assert bot._STATE["schedule_time"] == "04:30"
         assert "04:30" in update_msg.message.reply_text.call_args[0][0]
 
     def test_set_time_invalid_format(self):
-        ctx = _make_context({"waiting_for": "schedule_time"})
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="25:99")
-        run(bot.message_handler(update_msg, ctx))
-        assert bot._STATE["schedule_time"] == "03:00"  # unchanged
+        run(bot._flow_schedule_receive(update_msg, ctx))
+        assert bot._STATE["schedule_time"] == "03:00"
 
     def test_set_time_bad_string(self):
-        ctx = _make_context({"waiting_for": "schedule_time"})
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="noon")
-        run(bot.message_handler(update_msg, ctx))
+        run(bot._flow_schedule_receive(update_msg, ctx))
         assert bot._STATE["schedule_time"] == "03:00"
+
+    def test_set_time_ask_sets_fsm_name(self):
+        update = _make_callback(ADMIN_ID, "v2_schedule_set")
+        ctx = _make_context()
+        run(bot._flow_schedule_ask(update, ctx))
+        assert ctx.user_data.get("_fsm_name") == "SET_SCHEDULE"
 
 
 # ===========================================================================
@@ -775,13 +829,13 @@ class TestScenarioHistoryAndPlaytime:
 class TestScenarioNotifyCommand:
     def test_adds_to_waitlist_when_stopped(self):
         update = _make_update(ADMIN_ID)
-        with patch.object(bot, "_container_running", return_value=False):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=False)):
             run(bot.cmd_notify(update, _make_context()))
         assert ADMIN_ID in bot._STATE["notify_waitlist"]
 
     def test_replies_online_when_running(self):
         update = _make_update(ADMIN_ID)
-        with patch.object(bot, "_container_running", return_value=True):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=True)):
             run(bot.cmd_notify(update, _make_context()))
         assert ADMIN_ID not in bot._STATE["notify_waitlist"]
         assert "already online" in update.message.reply_text.call_args[0][0].lower()
@@ -789,38 +843,50 @@ class TestScenarioNotifyCommand:
     def test_idempotent(self):
         bot._STATE["notify_waitlist"] = [ADMIN_ID]
         update = _make_update(ADMIN_ID)
-        with patch.object(bot, "_container_running", return_value=False):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=False)):
             run(bot.cmd_notify(update, _make_context()))
         assert bot._STATE["notify_waitlist"].count(ADMIN_ID) == 1
 
     def test_notify_only_user_can_subscribe(self):
         update = _make_update(NOTIFY_ID)
-        with patch.object(bot, "_container_running", return_value=False):
+        with patch.object(bot, "_container_running", new=AsyncMock(return_value=False)):
             run(bot.cmd_notify(update, _make_context()))
         assert NOTIFY_ID in bot._STATE["notify_waitlist"]
 
 
 # ===========================================================================
-# Scenario 10 — Remove user flow
+# Scenario 10 — Remove user flow (ADR-011: tests the flow functions)
 # ===========================================================================
 class TestScenarioRemoveUser:
+    def test_ask_sets_fsm_name(self):
+        update = _make_callback(ADMIN_ID, "v2_users_remove")
+        ctx = _make_context()
+        run(bot._flow_remove_user_ask(update, ctx))
+        assert ctx.user_data.get("_fsm_name") == "REMOVE_USER"
+
     def test_remove_existing_notify_user(self):
         bot._STATE["users"]["notify_only"] = [NOTIFY_ID, 555]
-        ctx = _make_context({"waiting_for": "remove_user_id"})
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text=str(NOTIFY_ID))
-        run(bot.message_handler(update_msg, ctx))
+        run(bot._flow_remove_user_receive(update_msg, ctx))
         assert NOTIFY_ID not in bot._STATE["users"]["notify_only"]
         assert "Removed" in update_msg.message.reply_text.call_args[0][0]
 
     def test_remove_nonexistent_user(self):
-        ctx = _make_context({"waiting_for": "remove_user_id"})
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="9999")
-        run(bot.message_handler(update_msg, ctx))
+        run(bot._flow_remove_user_receive(update_msg, ctx))
         assert "not found" in update_msg.message.reply_text.call_args[0][0].lower()
 
     def test_remove_admin_from_state(self):
         bot._STATE["users"]["admins"] = [333]
-        ctx = _make_context({"waiting_for": "remove_user_id"})
+        ctx = _make_context()
         update_msg = _make_update(ADMIN_ID, text="333")
-        run(bot.message_handler(update_msg, ctx))
+        run(bot._flow_remove_user_receive(update_msg, ctx))
         assert 333 not in bot._STATE["users"]["admins"]
+
+    def test_invalid_id_stays_in_waiting(self):
+        ctx = _make_context()
+        update_msg = _make_update(ADMIN_ID, text="notanumber")
+        state = run(bot._flow_remove_user_receive(update_msg, ctx))
+        assert state == bot._WAITING

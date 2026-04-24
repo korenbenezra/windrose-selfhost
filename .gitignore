@@ -8,3 +8,8 @@ __pycache__/
 .pytest_cache/
 tests/
 docs/
+.env
+.venv/
+windrose_bot.pid
+state.json
+logs/
