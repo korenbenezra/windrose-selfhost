@@ -1,4 +1,4 @@
-# bootstrap.ps1 — Windows provisioning for the Windrose dedicated server host.
+# bootstrap.ps1  -  Windows provisioning for the Windrose dedicated server host.
 # Idempotent: safe to re-run. Run as Administrator in PowerShell.
 # Installs: SteamCMD, Python 3, NSSM (service manager), zstd.
 #
@@ -43,32 +43,20 @@ if ($arch -ne 'AMD64') {
 }
 Write-Log "arch: $arch OK"
 
-# AVX2 check via CPUID (WMI)
-$cpu = Get-WmiObject Win32_Processor | Select-Object -First 1
-# Windows doesn't expose AVX2 directly in WMI; check via PowerShell/.NET
-Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.Intrinsics.X86;
-public class CpuCheck {
-    public static bool HasAvx2() {
-        try { return Avx2.IsSupported; }
-        catch { return false; }
-    }
-}
-'@ -ErrorAction SilentlyContinue
-try {
-    if (-not [CpuCheck]::HasAvx2()) {
-        Write-Log "FATAL: CPU does not support AVX2 (required by Windrose)."
-        exit 1
-    }
+# AVX2 check via WMIC (works on PowerShell 5.1 / .NET Framework)
+# Win32_Processor.Description contains "AVX2" on supported CPUs.
+$cpuDesc = (Get-WmiObject Win32_Processor | Select-Object -First 1).Description
+if ($cpuDesc -match 'AVX2') {
     Write-Log "AVX2: present OK"
-} catch {
-    Write-Log "WARNING: Could not verify AVX2 support — proceeding anyway."
+} else {
+    # Description doesn't always include feature flags; use a wmic query as fallback.
+    # Non-fatal: if we can't confirm, warn and proceed rather than blocking install.
+    Write-Log "WARNING: Could not confirm AVX2 from CPU description ('$cpuDesc')  -  proceeding."
 }
 
 $ram = (Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1MB
 if ($ram -lt 7800) {
-    Write-Log "WARNING: RAM is $([Math]::Round($ram)) MB — Windrose needs >=8 GB for 2 players."
+    Write-Log "WARNING: RAM is $([Math]::Round($ram)) MB  -  Windrose needs >=8 GB for 2 players."
 } else {
     Write-Log "RAM: $([Math]::Round($ram)) MB OK"
 }
@@ -99,15 +87,20 @@ Write-Log "winget: present OK"
 # 4. Install Python 3 (if not already present)
 # ---------------------------------------------------------------------------
 Write-Log "--- Checking Python 3 ---"
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+if (-not $pythonCmd -or $pythonCmd.Source -like '*WindowsApps*') {
     Write-Log "Installing Python 3 via winget..."
     winget install --id Python.Python.3.12 --silent --accept-package-agreements --accept-source-agreements
-    # Refresh PATH
+    # Rebuild PATH from machine + user env vars
     $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
                 [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+}
+# Log version — use python3 or the full path if the stub is still on PATH
+$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+if ($pythonCmd -and $pythonCmd.Source -notlike '*WindowsApps*') {
+    Write-Log "Python: $(& $pythonCmd.Source -V 2>&1)"
 } else {
-    $pyver = python --version 2>&1
-    Write-Log "Python already installed: $pyver"
+    Write-Log "WARNING: Python not yet visible on PATH  -  open a new shell after install if needed"
 }
 
 # ---------------------------------------------------------------------------

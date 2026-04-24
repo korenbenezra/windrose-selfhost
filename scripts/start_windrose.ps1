@@ -1,20 +1,27 @@
-# start_windrose.ps1 — Launch script invoked by the windrose Windows Service (via NSSM).
-# On Windows the .exe runs directly — no Wine, no Xvfb needed.
+# start_windrose.ps1  -  Launch script invoked by the windrose Windows Service (via NSSM).
+# On Windows the .exe runs directly  -  no Wine, no Xvfb needed.
 #
 # Mirrors: start_windrose.sh (Linux/Wine path)
+param(
+    [string]$HomeDir = ''
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$INSTALL_DIR = "$env:USERPROFILE\windrose"
+# -HomeDir is passed by NSSM via install_service.ps1 and holds the installer's actual
+# home directory (e.g. C:\Users\koren). Fallback to USERPROFILE for manual runs.
+$OWNER_HOME  = if ($HomeDir) { $HomeDir } elseif ($env:WINDROSE_HOME) { $env:WINDROSE_HOME } else { $env:USERPROFILE }
+
+$INSTALL_DIR = "$OWNER_HOME\windrose"
 $SERVER_EXE  = "$INSTALL_DIR\R5\Binaries\Win64\WindroseServer-Win64-Shipping.exe"
-$LOG_DIR     = "$env:USERPROFILE\log"
+$LOG_DIR     = "$OWNER_HOME\log"
 $LOG_FILE    = "$LOG_DIR\windrose.log"
 $LOG_MAX_MB  = 100
 
 New-Item -ItemType Directory -Force -Path $LOG_DIR | Out-Null
 
 # ---------------------------------------------------------------------------
-# Log rotation — if windrose.log exceeds 100 MB, rotate to .old
+# Log rotation  -  if windrose.log exceeds 100 MB, rotate to .old
 # ---------------------------------------------------------------------------
 if (Test-Path $LOG_FILE) {
     $size = (Get-Item $LOG_FILE).Length / 1MB
@@ -38,8 +45,9 @@ if (-not (Test-Path $SERVER_EXE)) {
 }
 
 # ---------------------------------------------------------------------------
-# Launch — stdout/stderr are captured by NSSM's own log rotation.
+# Launch  -  stdout/stderr are captured by NSSM's own log rotation.
 # The process runs in the foreground so NSSM tracks the correct PID.
 # ---------------------------------------------------------------------------
+$LASTEXITCODE = 0
 & $SERVER_EXE -log
 exit $LASTEXITCODE

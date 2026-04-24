@@ -1,9 +1,9 @@
-# install_windrose.ps1 — Download Windrose via SteamCMD (native Windows).
+# install_windrose.ps1  -  Download Windrose via SteamCMD (native Windows).
 # Run once as Administrator after bootstrap.ps1 completes.
 #
 # Mirrors: install_windrose.sh (Linux/Wine path)
-# Key difference: no +@sSteamCmdForcePlatformType flag needed — SteamCMD on
-# Windows already targets the Windows binary natively.
+# Note: +@sSteamCmdForcePlatformType windows is still required on Windows because
+# Windrose has no Linux depot  -  without it SteamCMD returns "Missing configuration".
 #Requires -RunAsAdministrator
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -37,7 +37,9 @@ Write-Log "SteamCMD: $STEAMCMD_EXE OK"
 
 # ---------------------------------------------------------------------------
 # 2. Download Windrose server binary via SteamCMD
-#    On Windows, no platform override flag is needed — SteamCMD targets Windows natively.
+#    +@sSteamCmdForcePlatformType windows is required even on Windows:
+#    Windrose has no Linux depot, so SteamCMD fails with "Missing configuration"
+#    unless told explicitly to use the Windows depot.
 # ---------------------------------------------------------------------------
 Write-Log "--- Running SteamCMD to download Windrose (App ID $APP_ID) ---"
 Write-Log "    Install directory: $INSTALL_DIR"
@@ -45,6 +47,7 @@ Write-Log "    Install directory: $INSTALL_DIR"
 New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
 
 & $STEAMCMD_EXE `
+    +@sSteamCmdForcePlatformType windows `
     +force_install_dir $INSTALL_DIR `
     +login anonymous `
     +app_update $APP_ID validate `

@@ -1,11 +1,11 @@
-# healthcheck.ps1 — Scheduled health check for the Windrose Windows Service.
+# healthcheck.ps1  -  Scheduled health check for the Windrose Windows Service.
 # Schedule: every 10 minutes via Task Scheduler (set up by install.ps1).
 #
 # Exit codes (mirrors healthcheck.sh):
-#   0 — service is healthy (running)
-#   1 — service was stopped; successfully restarted
-#   2 — service was stopped; restart attempt failed
-#   3 — Windrose service not found
+#   0  -  service is healthy (running)
+#   1  -  service was stopped; successfully restarted
+#   2  -  service was stopped; restart attempt failed
+#   3  -  Windrose service not found
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -27,7 +27,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path $LOG_FILE) | Out-Null
 # ---------------------------------------------------------------------------
 $svc = Get-Service -Name $SVC_NAME -ErrorAction SilentlyContinue
 if (-not $svc) {
-    Write-Log "ERROR: '$SVC_NAME' service not found — is install_service.ps1 complete?"
+    Write-Log "ERROR: '$SVC_NAME' service not found  -  is install_service.ps1 complete?"
     Set-Content $STATE_FILE 'unit-missing' -Encoding UTF8
     exit 3
 }
@@ -41,7 +41,7 @@ if ($svc.Status -eq 'Running') {
     exit 0
 }
 
-Write-Log "WARN: $SVC_NAME service state=$($svc.Status) — attempting restart"
+Write-Log "WARN: $SVC_NAME service state=$($svc.Status)  -  attempting restart"
 Set-Content $STATE_FILE 'restarting' -Encoding UTF8
 
 # ---------------------------------------------------------------------------

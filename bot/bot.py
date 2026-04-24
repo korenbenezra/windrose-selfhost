@@ -78,8 +78,9 @@ RAM_ALERT_THRESHOLD: float = float(os.environ.get("RAM_ALERT_THRESHOLD", "90"))
 IDLE_TIMEOUT_MINUTES: int = int(os.environ.get("IDLE_TIMEOUT_MINUTES", "60"))
 
 STATE_PATH = Path(__file__).parent / "state.json"
-BACKUP_SCRIPT = str(Path.home() / "scripts" / "backup_world.sh")
-UPDATE_SCRIPT = str(Path.home() / "scripts" / "update_windrose.sh")
+_SCRIPTS_DIR = Path(os.environ.get("WINDROSE_SCRIPTS_DIR", r"D:\repositories\windrose-selfhost\scripts"))
+BACKUP_SCRIPT = str(_SCRIPTS_DIR / "backup_world.ps1")
+UPDATE_SCRIPT = str(_SCRIPTS_DIR / "update_windrose.ps1")
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -231,59 +232,68 @@ def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 # ---------------------------------------------------------------------------
-# Docker / container helpers
+# Windows service helpers (replaces Docker/container helpers)
 # ---------------------------------------------------------------------------
-def _docker(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["docker", *args], capture_output=True, text=True,
-    )
+_SVC_NAME = "Windrose"
+
+
+def _sc(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["sc.exe", *args], capture_output=True, text=True)
 
 
 def _container_running() -> bool:
-    r = _docker("inspect", "--format", "{{.State.Running}}", CONTAINER_NAME)
-    return r.stdout.strip() == "true"
+    r = _sc("query", _SVC_NAME)
+    return "RUNNING" in r.stdout
 
 
 def _container_status() -> str:
-    r = _docker("inspect", "--format", "{{.State.Status}}", CONTAINER_NAME)
-    return r.stdout.strip() or "unknown"
+    r = _sc("query", _SVC_NAME)
+    for line in r.stdout.splitlines():
+        if "STATE" in line:
+            parts = line.split()
+            if len(parts) >= 4:
+                return parts[3].lower()
+    return "unknown"
 
 
 def _container_uptime() -> str:
-    r = _docker("inspect", "--format", "{{.State.StartedAt}}", CONTAINER_NAME)
-    started = r.stdout.strip()
-    if not started or started == "<no value>":
-        return "unknown"
-    try:
-        dt = datetime.datetime.fromisoformat(started.replace("Z", "+00:00"))
-        delta = datetime.datetime.now(datetime.timezone.utc) - dt
-        total = int(delta.total_seconds())
-        h, rem = divmod(total, 3600)
-        m, s = divmod(rem, 60)
-        return f"{h}h {m:02d}m {s:02d}s"
-    except Exception:
-        return started
+    for proc in psutil.process_iter(["name", "create_time"]):
+        try:
+            if "WindroseServer" in (proc.info["name"] or ""):
+                started = datetime.datetime.fromtimestamp(
+                    proc.info["create_time"], tz=datetime.timezone.utc
+                )
+                delta = datetime.datetime.now(datetime.timezone.utc) - started
+                total = int(delta.total_seconds())
+                h, rem = divmod(total, 3600)
+                m, s = divmod(rem, 60)
+                return f"{h}h {m:02d}m {s:02d}s"
+        except Exception:
+            pass
+    return "unknown"
 
 
 def _docker_stop() -> None:
-    _docker("stop", CONTAINER_NAME)
+    _sc("stop", _SVC_NAME)
 
 
 def _docker_start() -> None:
-    _docker("start", CONTAINER_NAME)
+    _sc("start", _SVC_NAME)
 
 
 def _docker_restart() -> None:
-    _docker("restart", CONTAINER_NAME)
-
+    _sc("stop", _SVC_NAME)
+    time.sleep(8)
+    _sc("start", _SVC_NAME)
 
 
 def _last_log_lines(n: int = 30) -> str:
-    r = subprocess.run(
-        ["journalctl", "-u", "windrose.service", "-n", str(n), "--no-pager", "-q"],
-        capture_output=True, text=True,
-    )
-    return (r.stdout + r.stderr).strip() or "(no log output)"
+    try:
+        with open(LOG_PATH, errors="replace") as f:
+            lines = f.readlines()
+        return "".join(lines[-n:]).strip() or "(no log output)"
+    except Exception as exc:
+        return f"(error reading log: {exc})"
 
 # ---------------------------------------------------------------------------
 # Log line parser
@@ -414,19 +424,16 @@ def _start_watchdog(context: ContextTypes.DEFAULT_TYPE, loop: asyncio.AbstractEv
 
 
 async def _poll_journal_job(context: ContextTypes.DEFAULT_TYPE) -> None:
-    window = POLL_INTERVAL + 10
+    # On Windows: tail LOG_PATH for lines written in the last POLL_INTERVAL seconds
     try:
-        result = await asyncio.to_thread(
-            subprocess.run,
-            ["journalctl", "-u", "windrose.service",
-             "--since", f"{window} seconds ago",
-             "--no-pager", "-q"],
-            capture_output=True, text=True, timeout=10,
-        )
-        for line in (result.stdout + result.stderr).splitlines():
+        if not Path(LOG_PATH).exists():
+            return
+        with open(LOG_PATH, errors="replace") as f:
+            lines = f.readlines()
+        for line in lines[-200:]:
             await _handle_line(line, context)
     except Exception as exc:
-        log.warning("journalctl poll error: %s", exc)
+        log.warning("log poll error: %s", exc)
 
 # ---------------------------------------------------------------------------
 # Background jobs
@@ -523,7 +530,7 @@ async def _scheduled_restart_job_fn(context: ContextTypes.DEFAULT_TYPE) -> None:
     _docker_stop()
     await asyncio.sleep(5)
     proc = await asyncio.to_thread(
-        subprocess.run, ["bash", UPDATE_SCRIPT],
+        subprocess.run, ["powershell.exe", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", UPDATE_SCRIPT],
         capture_output=True, text=True, timeout=600,
     )
     _docker_start()
@@ -974,7 +981,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if await admin_required(): return
         await edit("Backup started...")
         proc = await asyncio.to_thread(
-            subprocess.run, ["bash", BACKUP_SCRIPT],
+            subprocess.run, ["powershell.exe", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", BACKUP_SCRIPT],
             capture_output=True, text=True, timeout=300,
         )
         result = "OK" if proc.returncode == 0 else f"FAILED (exit {proc.returncode})"
@@ -997,7 +1004,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if await admin_required(): return
         await edit("Update started (takes a few minutes)...")
         proc = await asyncio.to_thread(
-            subprocess.run, ["bash", UPDATE_SCRIPT],
+            subprocess.run, ["powershell.exe", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", UPDATE_SCRIPT],
             capture_output=True, text=True, timeout=600,
         )
         result = "OK" if proc.returncode == 0 else f"FAILED (exit {proc.returncode})"

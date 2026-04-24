@@ -1,4 +1,4 @@
-# install_bot.ps1 — Set up the Windrose Telegram bot virtualenv and config on Windows.
+# install_bot.ps1  -  Set up the Windrose Telegram bot virtualenv and config on Windows.
 # Run as Administrator after install_service.ps1 completes.
 #
 # Mirrors: install_bot.sh (Linux path)
@@ -59,26 +59,44 @@ if (-not (Test-Path $BOT_ENV_DST)) {
     Write-Host "  Set BOT_TOKEN, ADMIN_CHAT_ID, ALLOWED_CHAT_IDS, and LOG_PATH" -ForegroundColor Yellow
     Write-Host ""
 } else {
-    Write-Log ".env already exists — not overwriting"
+    Write-Log ".env already exists  -  not overwriting"
 }
 
 # ---------------------------------------------------------------------------
-# 3. Verify Python is available
+# 3. Locate the real Python executable (skip Microsoft Store stub)
 # ---------------------------------------------------------------------------
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Log "FATAL: python not found on PATH. Run bootstrap.ps1 first."
+$realPython = $null
+foreach ($candidate in @('py', 'python3', 'python')) {
+    $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source -notlike '*WindowsApps*' -and (Test-Path $cmd.Source)) {
+        $realPython = $cmd.Source
+        break
+    }
+}
+# Also check common winget install location directly
+if (-not $realPython) {
+    $guess = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
+    if (Test-Path $guess) { $realPython = $guess }
+}
+if (-not $realPython) {
+    Write-Log "FATAL: Real Python executable not found. Disable the Microsoft Store python alias in Settings > Apps > Advanced app settings > App execution aliases, then re-run."
     exit 1
 }
+Write-Log "Python: $realPython"
 
 # ---------------------------------------------------------------------------
 # 4. Create Python virtualenv
 # ---------------------------------------------------------------------------
 if (-not (Test-Path $PYTHON_EXE)) {
     Write-Log "--- Creating virtualenv at $VENV ---"
-    python -m venv $VENV
+    & $realPython -m venv $VENV
+    if (-not (Test-Path $PYTHON_EXE)) {
+        Write-Log "FATAL: venv creation failed  -  $PYTHON_EXE not found after running venv."
+        exit 1
+    }
     Write-Log "Virtualenv created OK"
 } else {
-    Write-Log "Virtualenv already exists — upgrading packages"
+    Write-Log "Virtualenv already exists  -  upgrading packages"
 }
 
 # ---------------------------------------------------------------------------
@@ -129,7 +147,7 @@ if (Test-Path $NSSM_EXE) {
 
     Write-Log "WindroseBot service registered OK"
 } else {
-    Write-Log "INFO: NSSM not found — run install_service.ps1 to register the bot as a service"
+    Write-Log "INFO: NSSM not found  -  run install_service.ps1 to register the bot as a service"
 }
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# backup_world.ps1 — Nightly world-save snapshot with 7-day rolling retention.
+# backup_world.ps1  -  Nightly world-save snapshot with 7-day rolling retention.
 # Schedule: daily at 02:30 via Task Scheduler (set up by install.ps1).
 #
 # Mirrors: backup_world.sh (Linux path)
@@ -46,7 +46,7 @@ if ($zstd) {
     }
 } else {
     $BACKUP_FILE = "$BACKUP_DIR\saves-${TS}.zip"
-    Write-Log "Snapshotting $SAVES_DIR -> $BACKUP_FILE (zip fallback — install zstd for better compression)"
+    Write-Log "Snapshotting $SAVES_DIR -> $BACKUP_FILE (zip fallback  -  install zstd for better compression)"
     Compress-Archive -Path $SAVES_DIR -DestinationPath $BACKUP_FILE -Force
 }
 
@@ -66,7 +66,7 @@ Get-ChildItem $BACKUP_DIR -File |
         Remove-Item $_.FullName -Force
     }
 
-$remaining = (Get-ChildItem $BACKUP_DIR -File | Where-Object { $_.Name -match '^saves-' }).Count
+$remaining = @(Get-ChildItem $BACKUP_DIR -File | Where-Object { $_.Name -match '^saves-' }).Count
 Write-Log "Retention complete. Backup files on disk: $remaining"
 
 Write-Log "=== Windrose backup finished ==="

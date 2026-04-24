@@ -1,4 +1,4 @@
-# install.ps1 — One-command Windrose dedicated server installer for Windows.
+# install.ps1  -  One-command Windrose dedicated server installer for Windows.
 #
 # Usage (run as Administrator in PowerShell):
 #   .\install.ps1
@@ -53,13 +53,13 @@ function Invoke-Step {
 # ---------------------------------------------------------------------------
 Clear-Host
 Write-Host ""
-Write-Host "  ╔════════════════════════════════════════════╗" -ForegroundColor Magenta
-Write-Host "  ║   Windrose Dedicated Server — Windows      ║" -ForegroundColor Magenta
-Write-Host "  ║   Self-host installer                      ║" -ForegroundColor Magenta
-Write-Host "  ╚════════════════════════════════════════════╝" -ForegroundColor Magenta
+Write-Host "  +============================================+" -ForegroundColor Magenta
+Write-Host "  |   Windrose Dedicated Server  -  Windows      |" -ForegroundColor Magenta
+Write-Host "  |   Self-host installer                      |" -ForegroundColor Magenta
+Write-Host "  +============================================+" -ForegroundColor Magenta
 Write-Host ""
 Write-Host "  This will install and start the Windrose dedicated server."
-Write-Host "  Estimated time: 5–15 minutes (SteamCMD download speed varies)."
+Write-Host "  Estimated time: 5-15 minutes (SteamCMD download speed varies)."
 Write-Host ""
 Write-Host "  Log file: $LOG_FILE"
 Write-Host ""
@@ -67,22 +67,22 @@ Write-Host ""
 $confirm = Read-Host "  Press ENTER to begin, or Ctrl+C to cancel"
 
 # ---------------------------------------------------------------------------
-# Step 1 — Prerequisites
+# Step 1  -  Prerequisites
 # ---------------------------------------------------------------------------
-Write-Step "Step 1/6 — Installing prerequisites (SteamCMD, Python, NSSM, zstd)"
+Write-Step "Step 1/6  -  Installing prerequisites (SteamCMD, Python, NSSM, zstd)"
 Invoke-Step 'bootstrap.ps1'
 
 # ---------------------------------------------------------------------------
-# Step 2 — Download Windrose
+# Step 2  -  Download Windrose
 # ---------------------------------------------------------------------------
-Write-Step "Step 2/6 — Downloading Windrose server binary via SteamCMD"
-Write-Host "  (This downloads several GB — grab a coffee)" -ForegroundColor DarkGray
+Write-Step "Step 2/6  -  Downloading Windrose server binary via SteamCMD"
+Write-Host "  (This downloads several GB  -  grab a coffee)" -ForegroundColor DarkGray
 Invoke-Step 'install_windrose.ps1'
 
 # ---------------------------------------------------------------------------
-# Step 3 — Telegram bot credentials
+# Step 3  -  Telegram bot credentials
 # ---------------------------------------------------------------------------
-Write-Step "Step 3/6 — Telegram bot configuration"
+Write-Step "Step 3/6  -  Telegram bot configuration"
 
 $BOT_DIR     = "$env:USERPROFILE\windrose-telegram-bot"
 $BOT_ENV_DST = "$BOT_DIR\.env"
@@ -106,35 +106,34 @@ $allowIds = Read-Host "  ALLOWED_CHAT_IDS (comma-separated, or same as ADMIN_CHA
 
 if ($botToken) {
     $env_content = Get-Content $BOT_ENV_DST -Raw
-    $env_content = $env_content -replace 'BOT_TOKEN=.*',       "BOT_TOKEN=$botToken"
-    $env_content = $env_content -replace 'ADMIN_CHAT_ID=.*',   "ADMIN_CHAT_ID=$adminId"
-    if ($allowIds) {
-        $env_content = $env_content -replace 'ALLOWED_CHAT_IDS=.*', "ALLOWED_CHAT_IDS=$allowIds"
-    } else {
-        $env_content = $env_content -replace 'ALLOWED_CHAT_IDS=.*', "ALLOWED_CHAT_IDS=$adminId"
-    }
+    $notifyIds = if ($allowIds) { $allowIds } else { $adminId }
+    $env_content = $env_content -replace 'BOT_TOKEN=.*',         "BOT_TOKEN=$botToken"
+    $env_content = $env_content -replace 'ADMIN_IDS=.*',         "ADMIN_IDS=$adminId"
+    $env_content = $env_content -replace 'NOTIFY_CHAT_IDS=.*',   "NOTIFY_CHAT_IDS=$notifyIds"
+    $env_content = $env_content -replace 'SERVER_FILES_DIR=.*',  "SERVER_FILES_DIR=$env:USERPROFILE\windrose\R5\Saved"
+    $env_content = $env_content -replace 'LOG_PATH=.*',          "LOG_PATH=$env:USERPROFILE\windrose\R5\Saved\Logs\R5.log"
     Set-Content $BOT_ENV_DST $env_content -Encoding UTF8
     Write-Log "Telegram credentials written to .env"
 } else {
-    Write-Log "Skipping Telegram bot credentials — edit $BOT_ENV_DST manually later"
+    Write-Log "Skipping Telegram bot credentials  -  edit $BOT_ENV_DST manually later"
 }
 
 # ---------------------------------------------------------------------------
-# Step 4 — Bot dependencies
+# Step 4  -  Bot dependencies
 # ---------------------------------------------------------------------------
-Write-Step "Step 4/6 — Installing Telegram bot"
+Write-Step "Step 4/6  -  Installing Telegram bot"
 Invoke-Step 'install_bot.ps1'
 
 # ---------------------------------------------------------------------------
-# Step 5 — Windows Services
+# Step 5  -  Windows Services
 # ---------------------------------------------------------------------------
-Write-Step "Step 5/6 — Registering Windows Services"
+Write-Step "Step 5/6  -  Registering Windows Services"
 Invoke-Step 'install_service.ps1'
 
 # ---------------------------------------------------------------------------
-# Step 6 — Task Scheduler (health check, backup, update)
+# Step 6  -  Task Scheduler (health check, backup, update)
 # ---------------------------------------------------------------------------
-Write-Step "Step 6/6 — Setting up scheduled tasks"
+Write-Step "Step 6/6  -  Setting up scheduled tasks"
 
 $PS = 'powershell.exe'
 $flags = '-NonInteractive -ExecutionPolicy Bypass -File'
@@ -163,8 +162,7 @@ $tasks = @(
 
 foreach ($t in $tasks) {
     $action  = New-ScheduledTaskAction -Execute $PS -Argument "$flags `"$($t.Script)`""
-    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
-                    -RunOnlyIfNetworkAvailable $false
+    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Hours 2)
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 
     if (Get-ScheduledTask -TaskName $t.Name -ErrorAction SilentlyContinue) {
@@ -183,12 +181,12 @@ foreach ($t in $tasks) {
 }
 
 # ---------------------------------------------------------------------------
-# Done — status report
+# Done  -  status report
 # ---------------------------------------------------------------------------
 Write-Host ""
-Write-Host "  ╔════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "  ║          Installation complete!            ║" -ForegroundColor Green
-Write-Host "  ╚════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "  +============================================+" -ForegroundColor Green
+Write-Host "  |          Installation complete!            |" -ForegroundColor Green
+Write-Host "  +============================================+" -ForegroundColor Green
 Write-Host ""
 
 $svc = Get-Service -Name 'Windrose' -ErrorAction SilentlyContinue

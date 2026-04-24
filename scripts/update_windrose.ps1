@@ -1,4 +1,4 @@
-# update_windrose.ps1 — Backup-first SteamCMD update for Windrose on Windows.
+# update_windrose.ps1  -  Backup-first SteamCMD update for Windrose on Windows.
 # Schedule: daily at 03:00 via Task Scheduler (set up by install.ps1).
 #
 # Mirrors: update_windrose.sh (Linux path)
@@ -58,7 +58,7 @@ try {
     Compress-Archive -Path $SAVES_DIR -DestinationPath $BACKUP_FILE -Force -ErrorAction Stop
     Write-Log "Pre-update backup OK: $BACKUP_FILE"
 } catch {
-    Write-Log "ERROR: Pre-update backup failed: $_ — aborting update"
+    Write-Log "ERROR: Pre-update backup failed: $_  -  aborting update"
     Send-TelegramNotify "&#x26A0; Windrose update ABORTED: backup failed at $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ss')"
     exit 1
 }
@@ -77,11 +77,12 @@ try {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Run SteamCMD — on Windows no platform override flag is needed
+# 3. Run SteamCMD  -  platform flag required even on Windows (no Linux depot)
 # ---------------------------------------------------------------------------
 Write-Log "Running SteamCMD app_update $APP_ID validate"
 
 & $STEAMCMD_EXE `
+    +@sSteamCmdForcePlatformType windows `
     +force_install_dir $INSTALL_DIR `
     +login anonymous `
     +app_update $APP_ID validate `
@@ -89,7 +90,7 @@ Write-Log "Running SteamCMD app_update $APP_ID validate"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Log "ERROR: SteamCMD failed (exit $LASTEXITCODE); attempting recovery restart"
-    Send-TelegramNotify "&#x26A0; Windrose SteamCMD update FAILED — attempting recovery restart at $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ss')"
+    Send-TelegramNotify "&#x26A0; Windrose SteamCMD update FAILED  -  attempting recovery restart at $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ss')"
     Start-Service -Name $SVC_NAME -ErrorAction SilentlyContinue
     exit 1
 }
