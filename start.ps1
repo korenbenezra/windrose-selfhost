@@ -41,7 +41,7 @@ if ($legacySvc -and $legacySvc.Status -eq 'Running') {
 # --- 1. Start the Windrose game server service ---
 $svc = Get-Service -Name $SVC_NAME -ErrorAction SilentlyContinue
 if (-not $svc) {
-    Write-Host "WARNING: Windows service '$SVC_NAME' not found — skipping game server start." -ForegroundColor Yellow
+    Write-Host "WARNING: Windows service '$SVC_NAME' not found - skipping game server start." -ForegroundColor Yellow
 } elseif ($svc.Status -eq 'Running') {
     Write-Host "Game server is already running."
 } else {
