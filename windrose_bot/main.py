@@ -17,6 +17,7 @@ from telegram.error import InvalidToken
 from telegram.ext import Application, ApplicationBuilder, ApplicationHandlerStop, TypeHandler
 
 from windrose_bot import config, state
+from windrose_bot.core import audit as audit_log
 from windrose_bot.core.errors import error_handler
 from windrose_bot.handlers.callbacks import build_callback_handlers
 from windrose_bot.handlers.commands import build_command_handlers
@@ -195,6 +196,57 @@ async def _idle_autostop_job(context) -> None:
 _scheduled_restart_job_handle = None
 
 
+async def _scheduled_backup_job_fn(context) -> None:
+    """Run scheduled backup (ADR-0019)."""
+    if not state._STATE.get("schedule_backup_enabled"):
+        return
+    await _notify_admins(context, "💾 Scheduled backup starting...")
+    proc = await asyncio.to_thread(
+        subprocess.run,
+        ["powershell.exe", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", config.BACKUP_SCRIPT],
+        capture_output=True, text=True, timeout=300,
+    )
+    result = "OK" if proc.returncode == 0 else f"FAILED (exit {proc.returncode})"
+    audit_log.record("scheduled_backup", result=result)
+    await _notify_admins(context, f"💾 Scheduled backup: {result}")
+
+
+async def _alert_rules_job(context) -> None:
+    """Evaluate admin-defined alert rules (ADR-0020)."""
+    import psutil
+    rules = state._STATE.get("alert_rules", [])
+    if not rules:
+        return
+    metrics = {
+        "cpu": psutil.cpu_percent(interval=0.0),
+        "ram": psutil.virtual_memory().percent,
+    }
+    for rule in rules:
+        metric = rule.get("metric", "cpu")
+        threshold = float(rule.get("threshold", 90))
+        op = rule.get("op", ">")
+        severity = rule.get("severity", "warning")
+        value = metrics.get(metric)
+        if value is None:
+            continue
+        triggered = (op == ">" and value > threshold) or (op == "<" and value < threshold)
+        if not triggered:
+            continue
+        cooldown_m = int(rule.get("cooldown_m", 15))
+        last_fired = rule.get("_last_fired")
+        if last_fired:
+            try:
+                elapsed = (datetime.datetime.now(datetime.timezone.utc) -
+                           datetime.datetime.fromisoformat(last_fired.replace("Z", "+00:00"))).total_seconds()
+                if elapsed < cooldown_m * 60:
+                    continue
+            except Exception:
+                pass
+        rule["_last_fired"] = datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+        icon = "🚨" if severity == "critical" else "⚠️"
+        await _notify_admins(context, f"{icon} Alert: {metric} is {value:.0f}% ({op}{threshold})")
+
+
 async def _scheduled_restart_job_fn(context) -> None:
     await _notify_admins(context, "🔄 Scheduled restart starting...")
     try:
@@ -274,6 +326,17 @@ async def post_init(application: Application) -> None:
     jq.run_repeating(_resource_alert_job,    interval=60,  first=60,  name="resource_alerts")
     jq.run_repeating(_idle_autostop_job,     interval=300, first=120, name="idle_autostop")
     jq.run_repeating(_server_state_poll_job, interval=30,  first=15,  name="server_state_poll")
+    jq.run_repeating(_alert_rules_job,       interval=60,  first=90,  name="alert_rules")
+
+    # Scheduled backup (ADR-0019)
+    if state._STATE.get("schedule_backup_enabled"):
+        t_str = state._STATE.get("schedule_backup_time", "02:00")
+        try:
+            bh, bm = map(int, t_str.split(":"))
+            bt = datetime.time(bh, bm, tzinfo=datetime.timezone.utc)
+            application.job_queue.run_daily(_scheduled_backup_job_fn, time=bt, name="scheduled_backup")
+        except Exception:
+            log.warning("Invalid schedule_backup_time: %s", t_str)
 
     register_scheduled_restart(application)
 

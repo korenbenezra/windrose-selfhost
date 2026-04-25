@@ -26,9 +26,10 @@ NOTIFY_IDS: list[int] = [
 ] or list(ADMIN_IDS)
 
 SERVER_FILES_DIR: str = os.environ.get(
-    "SERVER_FILES_DIR", str(Path.home() / "windrose" / "server-files")
+    "SERVER_FILES_DIR", str(Path.home() / "windrose" / "R5")
 )
-SERVER_DESC_PATH = Path(SERVER_FILES_DIR) / "ServerDescription.json"
+# Legacy alias — points to R5/Saved/ServerDescription.json (password only)
+SERVER_DESC_PATH = Path(SERVER_FILES_DIR) / "Saved" / "ServerDescription.json"
 
 LOG_PATH: str = os.environ.get("LOG_PATH", str(Path.home() / "log" / "windrose.log"))
 POLL_INTERVAL: int = int(os.environ.get("POLL_INTERVAL_SECONDS", "30"))
@@ -53,6 +54,10 @@ _SCRIPTS_DIR = Path(os.environ.get(
 ))
 BACKUP_SCRIPT = str(_SCRIPTS_DIR / "backup_world.ps1")
 UPDATE_SCRIPT = str(_SCRIPTS_DIR / "update_windrose.ps1")
+MODS_SYNC_SCRIPT = str(_SCRIPTS_DIR / "sync_mods.ps1")
+
+AUDIT_PATH: str = os.environ.get("AUDIT_PATH", "audit.jsonl")
+BACKUPS_DIR: str = os.environ.get("BACKUPS_DIR", str(Path.home() / "windrose" / "backups"))
 
 SVC_NAME = "Windrose"
 

@@ -1,0 +1,31 @@
+{"ts": "2026-04-25T14:23:22.618538Z", "action": "stop", "result": "ok", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.643356Z", "action": "add_user", "result": "ok", "tier": "notify", "target_id": 555, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.656923Z", "action": "add_user", "result": "ok", "tier": "notify", "target_id": 555, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.661609Z", "action": "add_user", "result": "ok", "tier": "admin", "target_id": 777, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.679517Z", "action": "change_password", "result": "ok", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.689340Z", "action": "change_password", "result": "ok", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.700488Z", "action": "remove_password", "result": "ok", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.715892Z", "action": "schedule_toggle", "result": "ok", "enabled": true, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.721952Z", "action": "schedule_toggle", "result": "ok", "enabled": false, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.726594Z", "action": "set_schedule", "result": "ok", "time": "04:30", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.777617Z", "action": "remove_user", "result": "ok", "target_id": 444, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:23:22.785868Z", "action": "remove_user", "result": "ok", "target_id": 333, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:32:46.707567Z", "action": "stop", "result": "ok", "user_id": 1027338394, "user_name": "korenbenezra", "chat_id": 1027338394}
+{"ts": "2026-04-25T14:33:39.994843Z", "action": "broadcast", "result": "ok", "message": "Alo", "user_id": 1027338394, "user_name": "korenbenezra", "chat_id": 1027338394}
+{"ts": "2026-04-25T14:41:21.735405Z", "action": "stop", "result": "ok", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.774112Z", "action": "add_user", "result": "ok", "tier": "notify", "target_id": 555, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.817216Z", "action": "add_user", "result": "ok", "tier": "notify", "target_id": 555, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.824173Z", "action": "add_user", "result": "ok", "tier": "admin", "target_id": 777, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.853868Z", "action": "change_password", "result": "ok", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.862467Z", "action": "change_password", "result": "ok", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.879490Z", "action": "remove_password", "result": "ok", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.907693Z", "action": "schedule_toggle", "result": "ok", "enabled": true, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.917094Z", "action": "schedule_toggle", "result": "ok", "enabled": false, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:21.924484Z", "action": "set_schedule", "result": "ok", "time": "04:30", "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:22.000635Z", "action": "remove_user", "result": "ok", "target_id": 444, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:41:22.014944Z", "action": "remove_user", "result": "ok", "target_id": 333, "user_id": 111, "user_name": "user_111", "chat_id": 111}
+{"ts": "2026-04-25T14:43:40.502449Z", "action": "set_server_name", "result": "ok", "name": "Korenbenezra", "user_id": 1027338394, "user_name": "korenbenezra", "chat_id": 1027338394}
+{"ts": "2026-04-25T14:43:58.341998Z", "action": "stop", "result": "ok", "user_id": 1027338394, "user_name": "korenbenezra", "chat_id": 1027338394}
+{"ts": "2026-04-25T14:44:10.420111Z", "action": "set_max_players", "result": "ok", "value": 4, "user_id": 1027338394, "user_name": "korenbenezra", "chat_id": 1027338394}
+{"ts": "2026-04-25T14:44:28.695575Z", "action": "toggle_direct_connect", "result": "ok", "enabled": true, "user_id": 1027338394, "user_name": "korenbenezra", "chat_id": 1027338394}
+{"ts": "2026-04-25T14:44:31.639202Z", "action": "toggle_direct_connect", "result": "ok", "enabled": false, "user_id": 1027338394, "user_name": "korenbenezra", "chat_id": 1027338394}
