@@ -16,11 +16,16 @@ from windrose_bot import state
 from windrose_bot.config import BACKUP_SCRIPT, LOG_PATH, UPDATE_SCRIPT
 from windrose_bot.core.security import audit, is_admin, restricted
 from windrose_bot.keyboards.menus import (
+    admin_menu,
     back_keyboard,
     confirm_keyboard,
     main_panel,
+    monitoring_menu,
+    notifications_menu,
+    operations_menu,
     read_server_desc,
     schedule_menu_keyboard,
+    server_menu,
     settings_menu_keyboard,
     sysinfo_keyboard,
     users_menu_keyboard,
@@ -92,11 +97,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return False
 
     if data == "cb_panel":
-        await edit("<b>Windrose Server Control</b>", main_panel())
+        await edit("<b>Windrose Server Control</b>", main_panel(is_admin=is_admin(uid)))
+
+    elif data == "nav_server":
+        await edit("<b>Server</b>", server_menu())
+
+    elif data == "nav_monitoring":
+        await edit("<b>Monitoring</b>", monitoring_menu())
+
+    elif data == "nav_notifications":
+        await edit("<b>Notifications</b>", notifications_menu())
+
+    elif data == "nav_operations":
+        if await admin_required(): return
+        await edit("<b>Operations</b>", operations_menu())
+
+    elif data == "nav_admin":
+        if await admin_required(): return
+        await edit("<b>Admin</b>", admin_menu())
 
     elif data == "cb_status":
         svc_state = "running" if await container.running() else await container.status()
-        await edit(f"<b>Server status:</b> {svc_state}", main_panel())
+        await edit(f"<b>Server status:</b> {svc_state}", server_menu())
 
     elif data == "cb_players":
         players = state.known_players()
@@ -105,15 +127,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             text = f"<b>Players online ({len(players)}):</b>\n{names}"
         else:
             text = "<b>No players currently online.</b>"
-        await edit(text, main_panel())
+        await edit(text, server_menu())
 
     elif data == "cb_logs":
         from windrose_bot.handlers.commands import _last_log_lines
         lines = _last_log_lines(20)
-        await edit(f"<pre>{html.escape(lines[-3000:])}</pre>", main_panel())
+        await edit(f"<pre>{html.escape(lines[-3000:])}</pre>", monitoring_menu())
 
     elif data == "cb_uptime":
-        await edit(f"<b>Container uptime:</b> {container.uptime()}", main_panel())
+        await edit(f"<b>Container uptime:</b> {container.uptime()}", server_menu())
 
     elif data == "cb_backup_ask":
         if await admin_required(): return
@@ -141,7 +163,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             capture_output=True, text=True, timeout=300,
         )
         result = "OK" if proc.returncode == 0 else f"FAILED (exit {proc.returncode})"
-        await edit(f"<b>Backup:</b> {result}", main_panel())
+        await edit(f"<b>Backup:</b> {result}", operations_menu())
 
     elif data == "cb_confirmed_restart":
         if await admin_required(): return
@@ -153,10 +175,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             audit("restart", update, result="failed", reason=str(exc))
             await edit(
                 f"<b>Restart failed:</b>\n<pre>{html.escape(str(exc))[:3000]}</pre>",
-                main_panel(),
+                operations_menu(),
             )
             return
-        await edit("<b>Restart issued.</b> Server active in ~30s.", main_panel())
+        await edit("<b>Restart issued.</b> Server active in ~30s.", operations_menu())
 
     elif data == "cb_confirmed_stop":
         if await admin_required(): return
@@ -168,10 +190,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             audit("stop", update, result="failed", reason=str(exc))
             await edit(
                 f"<b>Stop failed:</b>\n<pre>{html.escape(str(exc))[:3000]}</pre>",
-                main_panel(),
+                operations_menu(),
             )
             return
-        await edit("<b>Server stopped.</b>", main_panel())
+        await edit("<b>Server stopped.</b>", operations_menu())
 
     elif data == "cb_confirmed_update":
         if await admin_required(): return
@@ -183,20 +205,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             capture_output=True, text=True, timeout=600,
         )
         result = "OK" if proc.returncode == 0 else f"FAILED (exit {proc.returncode})"
-        await edit(f"<b>Update:</b> {result}", main_panel())
+        await edit(f"<b>Update:</b> {result}", operations_menu())
 
     elif data == "v2_sysinfo":
         await edit(await sysinfo_text(), sysinfo_keyboard())
 
     elif data == "v2_notify_sub":
         if await container.running():
-            await edit("Server is already online!", main_panel())
+            await edit("Server is already online!", notifications_menu())
             return
         waitlist: list = state._STATE["notify_waitlist"]
         if uid not in waitlist:
             waitlist.append(uid)
             state.save()
-        await edit("🔔 You'll be notified when the server comes online.", main_panel())
+        await edit("🔔 You'll be notified when the server comes online.", notifications_menu())
 
     elif data == "v2_settings_menu":
         if await admin_required(): return

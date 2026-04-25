@@ -1,7 +1,7 @@
 # healthcheck.ps1  -  Scheduled health check for the Windrose Windows Service.
-# Schedule: every 10 minutes via Task Scheduler (set up by install.ps1).
+# Scheduled every 10 minutes by install.ps1 (Task Scheduler task "Windrose-Healthcheck").
 #
-# Exit codes (mirrors healthcheck.sh):
+# Exit codes:
 #   0  -  service is healthy (running)
 #   1  -  service was stopped; successfully restarted
 #   2  -  service was stopped; restart attempt failed

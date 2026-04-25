@@ -9,7 +9,7 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from windrose_bot import state
-from windrose_bot.core.security import restricted
+from windrose_bot.core.security import is_admin, restricted
 from windrose_bot.keyboards.menus import back_keyboard, confirm_keyboard, main_panel
 from windrose_bot.services import container
 
@@ -34,10 +34,11 @@ def _last_log_lines(n: int = 30) -> str:
 
 @restricted
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid = update.effective_user.id
     await update.message.reply_text(
         "<b>Windrose Server Control</b>",
         parse_mode=ParseMode.HTML,
-        reply_markup=main_panel(),
+        reply_markup=main_panel(is_admin=is_admin(uid)),
     )
 
 

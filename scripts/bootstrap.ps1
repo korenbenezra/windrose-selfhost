@@ -14,7 +14,6 @@ $STEAMCMD_DIR = "$env:USERPROFILE\steamcmd"
 $LOG_DIR      = "$env:USERPROFILE\log"
 $BACKUP_DIR   = "$env:USERPROFILE\windrose-backups"
 $SCRIPTS_DIR  = "$env:USERPROFILE\scripts"
-$BOT_DIR      = "$env:USERPROFILE\windrose-telegram-bot"
 $LOG_FILE     = "$LOG_DIR\windrose-bootstrap.log"
 
 function Write-Log {
@@ -66,7 +65,7 @@ if ($ram -lt 7800) {
 # ---------------------------------------------------------------------------
 Write-Log "--- Creating directory scaffolding ---"
 
-foreach ($dir in @($INSTALL_DIR, "$INSTALL_DIR\pfx", $LOG_DIR, $BACKUP_DIR, $SCRIPTS_DIR, $BOT_DIR)) {
+foreach ($dir in @($INSTALL_DIR, "$INSTALL_DIR\pfx", $LOG_DIR, $BACKUP_DIR, $SCRIPTS_DIR)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
 

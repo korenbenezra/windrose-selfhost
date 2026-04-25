@@ -1,64 +1,99 @@
-# Windrose Server (Ubuntu)
+# Windrose Server (Windows)
 
-Simple setup for running a Windrose dedicated server on Ubuntu 24.04.
+Setup for running a Windrose dedicated server on Windows Server / Windows 10/11 x64.
 
 ## Requirements
 
-- Ubuntu 24.04 (`x86_64`)
+- Windows 10/11 or Windows Server 2019+ (`x86_64`)
 - AVX2 CPU
-- User with `sudo`
+- 8 GB+ RAM
+- PowerShell 5.1+ (run as Administrator)
+- [winget](https://aka.ms/getwinget) available
 
 ## Quick Start
 
-Run as your normal user:
+Open PowerShell **as Administrator**:
 
-```bash
-git clone <your-repo-url> ~/windrose-selfhost
-cd ~/windrose-selfhost
-chmod +x scripts/*.sh
+```powershell
+git clone <your-repo-url> windrose-selfhost
+cd windrose-selfhost
 
-./scripts/bootstrap.sh
-./scripts/install_windrose.sh
-./scripts/install_service.sh
+# Install dependencies (SteamCMD, Python 3, NSSM, zstd)
+.\scripts\bootstrap.ps1
 
-sudo systemctl start windrose.service
+# Download and install Windrose server files
+.\scripts\install_windrose.ps1 -HomeDir $env:USERPROFILE
+
+# Register Windrose as a Windows Service (auto-start, crash restart via NSSM)
+.\scripts\install_service.ps1 -HomeDir $env:USERPROFILE
+
+# Start the server
+Start-Service Windrose
 ```
 
 ## Check Server
 
-```bash
-sudo systemctl status windrose.service
-journalctl -fu windrose
+```powershell
+Get-Service Windrose
+Get-Content "$env:USERPROFILE\log\windrose.log" -Wait
 ```
 
 ## Daily Commands
 
-```bash
-sudo systemctl start windrose.service
-sudo systemctl stop windrose.service
-sudo systemctl restart windrose.service
+```powershell
+Start-Service Windrose
+Stop-Service Windrose
+Restart-Service Windrose
+```
+
+Or via NSSM directly:
+
+```powershell
+nssm start Windrose
+nssm stop Windrose
+nssm restart Windrose
 ```
 
 ## Optional: Telegram Bot
 
-```bash
-./scripts/install_bot.sh
-nano ~/windrose-telegram-bot/.env
-sudo systemctl start windrose-bot
-sudo systemctl status windrose-bot
+```powershell
+# Install bot dependencies and create the .env file
+.\scripts\install_bot.ps1 -HomeDir $env:USERPROFILE
+
+# Edit the .env file
+notepad "$env:USERPROFILE\windrose-telegram-bot\.env"
+
+# Register and start the bot service
+.\scripts\install_service.ps1 -HomeDir $env:USERPROFILE
+
+Start-Service WindroseBot
+Get-Service WindroseBot
 ```
 
 Set these in `.env`:
 - `BOT_TOKEN`
-- `ADMIN_CHAT_ID`
-- `ALLOWED_CHAT_IDS`
+- `ADMIN_IDS`
+- `NOTIFY_CHAT_IDS`
 - `LOG_PATH`
 
 ## Optional: Automation (backup/update/healthcheck)
 
-```bash
-mkdir -p ~/scripts
-cp scripts/{backup_world.sh,update_windrose.sh,healthcheck.sh} ~/scripts/
-chmod +x ~/scripts/{backup_world.sh,update_windrose.sh,healthcheck.sh}
-./scripts/install_cron.sh
+The PowerShell scripts in `scripts/` can be scheduled via Windows Task Scheduler:
+
+```powershell
+# Run backup manually
+.\scripts\backup_world.ps1
+
+# Run update manually
+.\scripts\update_windrose.ps1
+
+# Run healthcheck manually
+.\scripts\healthcheck.ps1
+```
+
+To schedule them, open **Task Scheduler** and create tasks pointing to the `.ps1` files,
+or use the `schtasks` command:
+
+```powershell
+schtasks /create /tn "WindroseBackup" /tr "powershell -File C:\path\to\scripts\backup_world.ps1" /sc daily /st 03:00
 ```

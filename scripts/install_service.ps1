@@ -15,6 +15,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $NSSM_EXE    = "$env:ProgramFiles\nssm\nssm.exe"
+$PS_EXE      = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 # Use the explicitly supplied home dir, falling back to USERPROFILE.
 $OWNER_HOME  = if ($HomeDir) { $HomeDir } else { $env:USERPROFILE }
 $LOG_DIR     = "$OWNER_HOME\log"
@@ -22,8 +23,8 @@ $LOG_FILE    = "$LOG_DIR\windrose-install.log"
 
 $SVC_NAME      = 'Windrose'
 $WINDROSE_ROOT = "$OWNER_HOME\windrose"
-$SVC_EXE       = "$WINDROSE_ROOT\R5\Binaries\Win64\WindroseServer-Win64-Shipping.exe"
-$SVC_ARGS      = '-log -MULTIHOME=0.0.0.0 -PORT=7777 -QUERYPORT=7778'
+$SCRIPTS_DIR   = Split-Path -Parent $MyInvocation.MyCommand.Path
+$START_SCRIPT  = "$SCRIPTS_DIR\start_windrose.ps1"
 $SVC_STDOUT    = "$LOG_DIR\windrose.log"
 $SVC_STDERR    = "$LOG_DIR\windrose-error.log"
 
@@ -66,7 +67,9 @@ if ($existing) {
 # ---------------------------------------------------------------------------
 Write-Log "--- Installing Windows Service: $SVC_NAME ---"
 
-& $NSSM_EXE install $SVC_NAME $SVC_EXE $SVC_ARGS
+# Launch via start_windrose.ps1 so log-rotation and pre-flight checks run.
+$svcArgs = "-NonInteractive -ExecutionPolicy Bypass -File `"$START_SCRIPT`" -HomeDir `"$OWNER_HOME`""
+& $NSSM_EXE install $SVC_NAME $PS_EXE $svcArgs
 & $NSSM_EXE set $SVC_NAME AppDirectory $WINDROSE_ROOT
 & $NSSM_EXE set $SVC_NAME AppEnvironmentExtra "USERPROFILE=$OWNER_HOME" "APPDATA=$OWNER_HOME\AppData\Roaming" "LOCALAPPDATA=$OWNER_HOME\AppData\Local" "WINDROSE_HOME=$OWNER_HOME"
 & $NSSM_EXE set $SVC_NAME DisplayName  'Windrose Dedicated Server'
@@ -82,40 +85,7 @@ Write-Log "--- Installing Windows Service: $SVC_NAME ---"
 Write-Log "Service '$SVC_NAME' registered OK"
 
 # ---------------------------------------------------------------------------
-# 4. Install the Telegram bot service (if install_bot.ps1 has already been run)
-# ---------------------------------------------------------------------------
-$BOT_SCRIPT = "$OWNER_HOME\windrose-telegram-bot\bot.py"
-$BOT_VENV   = "$OWNER_HOME\windrose-telegram-bot\venv\Scripts\python.exe"
-$BOT_SVC    = 'WindroseBot'
-$BOT_LOG    = "$LOG_DIR\windrose-bot.log"
-
-if (Test-Path $BOT_VENV) {
-    Write-Log "--- Installing Windows Service: $BOT_SVC ---"
-
-    $existingBot = Get-Service -Name $BOT_SVC -ErrorAction SilentlyContinue
-    if ($existingBot) {
-        if ($existingBot.Status -eq 'Running') { & $NSSM_EXE stop $BOT_SVC }
-        & $NSSM_EXE remove $BOT_SVC confirm
-    }
-
-    & $NSSM_EXE install $BOT_SVC $BOT_VENV $BOT_SCRIPT
-    & $NSSM_EXE set $BOT_SVC DisplayName  'Windrose Telegram Bot'
-    & $NSSM_EXE set $BOT_SVC Description  'Windrose Telegram bot managed by windrose-selfhost'
-    & $NSSM_EXE set $BOT_SVC Start        SERVICE_AUTO_START
-    & $NSSM_EXE set $BOT_SVC AppDirectory "$OWNER_HOME\windrose-telegram-bot"
-    & $NSSM_EXE set $BOT_SVC AppStdout    $BOT_LOG
-    & $NSSM_EXE set $BOT_SVC AppStderr    $BOT_LOG
-    & $NSSM_EXE set $BOT_SVC AppRotateFiles  1
-    & $NSSM_EXE set $BOT_SVC AppRotateBytes  10485760  # 10 MB
-    & $NSSM_EXE set $BOT_SVC AppRestartDelay 10000
-
-    Write-Log "Service '$BOT_SVC' registered OK"
-} else {
-    Write-Log "INFO: Bot venv not found  -  skipping WindroseBot service (run install_bot.ps1 later)"
-}
-
-# ---------------------------------------------------------------------------
-# 5. Start the Windrose service (non-fatal  -  first-run may need config)
+# 4. Start the Windrose service (non-fatal  -  first-run may need config)
 # ---------------------------------------------------------------------------
 Write-Log "--- Starting $SVC_NAME service ---"
 try {

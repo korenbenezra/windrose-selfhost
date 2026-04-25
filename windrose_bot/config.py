@@ -25,7 +25,6 @@ NOTIFY_IDS: list[int] = [
     if x.strip()
 ] or list(ADMIN_IDS)
 
-CONTAINER_NAME: str = os.environ.get("CONTAINER_NAME", "windrose-server")
 SERVER_FILES_DIR: str = os.environ.get(
     "SERVER_FILES_DIR", str(Path.home() / "windrose" / "server-files")
 )
@@ -47,6 +46,7 @@ RAM_ALERT_THRESHOLD: float = float(os.environ.get("RAM_ALERT_THRESHOLD", "90"))
 IDLE_TIMEOUT_MINUTES: int = int(os.environ.get("IDLE_TIMEOUT_MINUTES", "60"))
 CONVERSATION_TIMEOUT: int = int(os.environ.get("CONVERSATION_TIMEOUT_SECONDS", "300"))
 DEVELOPER_CHAT_ID: int = int(os.environ.get("DEVELOPER_CHAT_ID", "0"))
+RATE_LIMIT_MESSAGES_PER_MINUTE: int = int(os.environ.get("RATE_LIMIT_MESSAGES_PER_MINUTE", "20"))
 
 _SCRIPTS_DIR = Path(os.environ.get(
     "WINDROSE_SCRIPTS_DIR", r"D:\repositories\windrose-selfhost\scripts"

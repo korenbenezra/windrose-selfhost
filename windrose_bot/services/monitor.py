@@ -1,4 +1,4 @@
-"""services/monitor.py — player monitor (ADR-008): watchdog + journalctl fallback."""
+"""services/monitor.py — player monitor: file watchdog + log polling fallback."""
 from __future__ import annotations
 
 import asyncio
@@ -255,7 +255,7 @@ def start_watchdog(context: ContextTypes.DEFAULT_TYPE, loop: asyncio.AbstractEve
     asyncio.run_coroutine_threadsafe(_reconcile_from_log_file(context), loop)
 
 
-async def poll_journal_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+async def poll_log_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if not Path(LOG_PATH).exists():
             return

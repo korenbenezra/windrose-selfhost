@@ -6,13 +6,15 @@ import datetime
 import logging
 import subprocess
 import sys
-import time
+import time as _time
+from collections import defaultdict
 from datetime import timedelta
 from pathlib import Path
 
-from telegram import BotCommand
+from telegram import BotCommand, Update
+from telegram.constants import ParseMode
 from telegram.error import InvalidToken
-from telegram.ext import Application, ApplicationBuilder
+from telegram.ext import Application, ApplicationBuilder, ApplicationHandlerStop, TypeHandler
 
 from windrose_bot import config, state
 from windrose_bot.core.errors import error_handler
@@ -54,10 +56,77 @@ def _configure_logging() -> None:
 
     logging.captureWarnings(True)
 
+
+# ---------------------------------------------------------------------------
+# Rate limiting (ADR-0007) — TypeHandler in group -1, runs before all handlers
+# ---------------------------------------------------------------------------
+_rate_counts: dict[int, list[float]] = defaultdict(list)
+
+
+async def _rate_limit_handler(update: Update, context) -> None:
+    user = update.effective_user
+    if user is None:
+        return
+    now = _time.monotonic()
+    timestamps = [t for t in _rate_counts[user.id] if now - t < 60.0]
+    if len(timestamps) >= config.RATE_LIMIT_MESSAGES_PER_MINUTE:
+        if update.effective_message:
+            await update.effective_message.reply_text(
+                "⏳ Too many messages. Please slow down."
+            )
+        raise ApplicationHandlerStop
+    timestamps.append(now)
+    _rate_counts[user.id] = timestamps
+
+
 # ---------------------------------------------------------------------------
 # Background jobs
 # ---------------------------------------------------------------------------
 _cpu_high_count = 0
+_server_was_running: bool | None = None
+
+
+def _now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+async def _notify_admins(context, text: str) -> None:
+    from windrose_bot.core.security import all_admins
+    for chat_id in all_admins():
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
+        except Exception as exc:
+            log.warning("admin notify failed for %s: %s", chat_id, exc)
+
+
+async def _flush_waitlist(context) -> None:
+    """Send 'server is online' to everyone in the notify waitlist and clear it."""
+    waitlist = list(state._STATE.get("notify_waitlist", []))
+    if not waitlist:
+        return
+    state._STATE["notify_waitlist"] = []
+    state.save()
+    for chat_id in waitlist:
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="✅ The Windrose server is now online!",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception as exc:
+            log.warning("waitlist flush failed for %s: %s", chat_id, exc)
+
+
+async def _server_state_poll_job(context) -> None:
+    """Detect server online/offline transitions; flush notify waitlist on startup."""
+    global _server_was_running
+    running = await container.running()
+    if _server_was_running is False and running:
+        await _flush_waitlist(context)
+        await _notify_admins(context, "✅ Windrose server is online.")
+    elif _server_was_running is True and not running:
+        await _notify_admins(context, "⏹ Windrose server went offline.")
+    _server_was_running = running
 
 
 async def _resource_alert_job(context) -> None:
@@ -178,19 +247,6 @@ def cancel_scheduled_restart() -> None:
         _scheduled_restart_job_handle = None
 
 
-async def _notify_admins(context, text: str) -> None:
-    from windrose_bot.core.security import all_admins
-    from telegram.constants import ParseMode
-    for chat_id in all_admins():
-        try:
-            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
-        except Exception as exc:
-            log.warning("admin notify failed for %s: %s", chat_id, exc)
-
-
-def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
-
 # ---------------------------------------------------------------------------
 # Startup / composition
 # ---------------------------------------------------------------------------
@@ -215,8 +271,9 @@ async def post_init(application: Application) -> None:
     monitor.compile_patterns()
 
     jq = application.job_queue
-    jq.run_repeating(_resource_alert_job, interval=60,    first=60,  name="resource_alerts")
-    jq.run_repeating(_idle_autostop_job,  interval=300,   first=120, name="idle_autostop")
+    jq.run_repeating(_resource_alert_job,    interval=60,  first=60,  name="resource_alerts")
+    jq.run_repeating(_idle_autostop_job,     interval=300, first=120, name="idle_autostop")
+    jq.run_repeating(_server_state_poll_job, interval=30,  first=15,  name="server_state_poll")
 
     register_scheduled_restart(application)
 
@@ -224,7 +281,7 @@ async def post_init(application: Application) -> None:
     mode = config.PLAYER_MONITOR_MODE
     log_path = Path(config.LOG_PATH)
     log_exists = log_path.exists()
-    log_fresh = log_exists and (time.time() - log_path.stat().st_mtime) < 600
+    log_fresh = log_exists and (_time.time() - log_path.stat().st_mtime) < 600
 
     if mode == "watchdog" or (mode == "auto" and log_fresh):
         monitor.start_watchdog(application, loop)
@@ -233,7 +290,7 @@ async def post_init(application: Application) -> None:
     else:
         log.info("Player monitor: polling (mode=%s, log_exists=%s)", mode, log_exists)
         jq.run_repeating(
-            monitor.poll_journal_job,
+            monitor.poll_log_job,
             interval=timedelta(seconds=config.POLL_INTERVAL),
             first=timedelta(seconds=10),
             name="player_monitor_poll",
@@ -243,6 +300,9 @@ async def post_init(application: Application) -> None:
 def build_app() -> Application:
     app = ApplicationBuilder().token(config.BOT_TOKEN).post_init(post_init).build()
     app.add_error_handler(error_handler)
+
+    # Rate limiting — runs before all feature handlers (ADR-0007)
+    app.add_handler(TypeHandler(Update, _rate_limit_handler), group=-1)
 
     for conv in build_conversation_handlers():
         app.add_handler(conv)

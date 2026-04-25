@@ -33,6 +33,13 @@ function Write-Log {
     Add-Content -Path $INSTALL_LOG -Value $line -Encoding UTF8
 }
 
+function Set-EnvIfMissing {
+    param([string]$Path, [string]$Key, [string]$Value)
+    if (-not (Get-EnvValue -Path $Path -Key $Key)) {
+        Set-Or-AddEnv -Path $Path -Key $Key -Value $Value
+    }
+}
+
 function Set-Or-AddEnv {
     param(
         [string]$Path,
@@ -184,14 +191,30 @@ if (-not $newToken -or $newToken -match '^(your-bot-token-here|your_telegram_bot
 }
 
 $serverFilesDefault = "$env:USERPROFILE\windrose\R5\Saved"
-$logPathDefault = "$env:USERPROFILE\windrose\R5\Saved\Logs\R5.log"
 
-Set-Or-AddEnv -Path $ENV_FILE -Key 'BOT_TOKEN' -Value $newToken
-Set-Or-AddEnv -Path $ENV_FILE -Key 'ADMIN_IDS' -Value $adminIds
+Set-Or-AddEnv -Path $ENV_FILE -Key 'BOT_TOKEN'       -Value $newToken
+Set-Or-AddEnv -Path $ENV_FILE -Key 'ADMIN_IDS'       -Value $adminIds
 Set-Or-AddEnv -Path $ENV_FILE -Key 'NOTIFY_CHAT_IDS' -Value $notifyIds
-Set-Or-AddEnv -Path $ENV_FILE -Key 'SERVER_FILES_DIR' -Value $serverFilesDefault
-Set-Or-AddEnv -Path $ENV_FILE -Key 'LOG_PATH' -Value $logPathDefault
-Set-Or-AddEnv -Path $ENV_FILE -Key 'WINDROSE_SCRIPTS_DIR' -Value "$REPO_DIR\scripts"
+
+# Path-style keys: only write when absent so re-runs do not clobber user edits.
+Set-EnvIfMissing -Path $ENV_FILE -Key 'SERVER_FILES_DIR'    -Value $serverFilesDefault
+Set-EnvIfMissing -Path $ENV_FILE -Key 'WINDROSE_SCRIPTS_DIR' -Value "$REPO_DIR\scripts"
+
+$existingLogPath = Get-EnvValue -Path $ENV_FILE -Key 'LOG_PATH'
+if (-not $existingLogPath) {
+    $logPathPrompt = ''
+    if ($canPrompt) {
+        Write-Host ""
+        Write-Host "LOG_PATH: full path to the Windrose server log file." -ForegroundColor Yellow
+        Write-Host "  Example: $env:USERPROFILE\windrose\R5\Saved\Logs\WindroseServer.log" -ForegroundColor DarkGray
+        $logPathPrompt = Read-Host "LOG_PATH (ENTER to skip and configure later)"
+    }
+    if ($logPathPrompt) {
+        Set-Or-AddEnv -Path $ENV_FILE -Key 'LOG_PATH' -Value $logPathPrompt
+    } else {
+        Write-Log "WARNING: LOG_PATH not set  -  player monitor will be inactive until configured in .env" 'Yellow'
+    }
+}
 
 Write-Log "Updated .env configuration"
 
@@ -240,6 +263,42 @@ try {
 }
 finally {
     Remove-Item -Path $smokeOutFile, $smokeErrFile, $smokePyFile -Force -ErrorAction SilentlyContinue
+}
+
+# ---------------------------------------------------------------------------
+# 6. Register scheduled maintenance tasks (requires Administrator)
+# ---------------------------------------------------------------------------
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
+
+if ($isAdmin) {
+    Write-Log "Registering scheduled maintenance tasks..."
+
+    $psExe = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+    $psFlags = "-NonInteractive -ExecutionPolicy Bypass -File"
+
+    $tasks = @(
+        @{ Name = "Windrose-Backup";      Schedule = "DAILY";  Time = "02:30"; Script = "$REPO_DIR\scripts\backup_world.ps1" },
+        @{ Name = "Windrose-Update";      Schedule = "DAILY";  Time = "03:00"; Script = "$REPO_DIR\scripts\update_windrose.ps1" },
+        @{ Name = "Windrose-Healthcheck"; Schedule = "MINUTE"; Time = $null;   Interval = 10; Script = "$REPO_DIR\scripts\healthcheck.ps1" }
+    )
+
+    foreach ($t in $tasks) {
+        $tr = "`"$psExe`" $psFlags `"$($t.Script)`""
+        if ($t.Schedule -eq 'MINUTE') {
+            schtasks /Create /F /TN $t.Name /SC MINUTE /MO $t.Interval /RU SYSTEM /TR $tr | Out-Null
+        } else {
+            schtasks /Create /F /TN $t.Name /SC $t.Schedule /ST $t.Time /RU SYSTEM /TR $tr | Out-Null
+        }
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log "  Scheduled task registered: $($t.Name)"
+        } else {
+            Write-Log "  WARNING: Failed to register task $($t.Name) (exit $LASTEXITCODE)" 'Yellow'
+        }
+    }
+} else {
+    Write-Log "Skipping scheduled task registration (not Administrator)  -  re-run as Administrator to register tasks" 'Yellow'
 }
 
 Write-Host ""

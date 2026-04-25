@@ -1,7 +1,5 @@
 # update_windrose.ps1  -  Backup-first SteamCMD update for Windrose on Windows.
-# Schedule: daily at 03:00 via Task Scheduler (set up by install.ps1).
-#
-# Mirrors: update_windrose.sh (Linux path)
+# Scheduled daily at 03:00 by install.ps1 (Task Scheduler task "Windrose-Update").
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -10,7 +8,8 @@ $INSTALL_DIR  = "$env:USERPROFILE\windrose"
 $BACKUP_DIR   = "$env:USERPROFILE\windrose-backups"
 $STEAMCMD_EXE = "$env:USERPROFILE\steamcmd\steamcmd.exe"
 $LOG_FILE     = "$env:USERPROFILE\log\windrose-update.log"
-$ENV_FILE     = "$env:USERPROFILE\windrose-telegram-bot\.env"
+$REPO_DIR     = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$ENV_FILE     = "$REPO_DIR\.env"
 $SVC_NAME     = 'Windrose'
 
 function Write-Log {
@@ -27,9 +26,10 @@ function Send-TelegramNotify {
         return
     }
     $token   = (Select-String -Path $ENV_FILE -Pattern '^BOT_TOKEN=(.+)').Matches.Groups[1].Value.Trim('"')
-    $chatId  = (Select-String -Path $ENV_FILE -Pattern '^ADMIN_CHAT_ID=(.+)').Matches.Groups[1].Value.Trim('"')
+    $adminIds = (Select-String -Path $ENV_FILE -Pattern '^ADMIN_IDS=(.+)').Matches.Groups[1].Value.Trim('"')
+    $chatId   = ($adminIds -split '[,\s]+' | Where-Object { $_ -match '^\d+$' } | Select-Object -First 1)
     if (-not $token -or -not $chatId) {
-        Write-Log "INFO: BOT_TOKEN or ADMIN_CHAT_ID missing; skipping notification"
+        Write-Log "INFO: BOT_TOKEN or ADMIN_IDS missing; skipping notification"
         return
     }
     try {

@@ -1,7 +1,5 @@
 # backup_world.ps1  -  Nightly world-save snapshot with 7-day rolling retention.
-# Schedule: daily at 02:30 via Task Scheduler (set up by install.ps1).
-#
-# Mirrors: backup_world.sh (Linux path)
+# Scheduled daily at 02:30 by install.ps1 (Task Scheduler task "Windrose-Backup").
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -37,11 +35,10 @@ $zstd = Get-Command zstd -ErrorAction SilentlyContinue
 if ($zstd) {
     $BACKUP_FILE = "$BACKUP_DIR\saves-${TS}.tar.zst"
     Write-Log "Snapshotting $SAVES_DIR -> $BACKUP_FILE (tar+zstd)"
-    # Use tar (available on Windows 10 1903+) piped to zstd
-    $tarArgs = @('-c', '-C', $INSTALL_DIR, 'R5/Saved')
-    $tarOutput = & tar @tarArgs | & zstd -o $BACKUP_FILE 2>&1
+    # Single-process: avoids PS 5.1 binary-stream corruption across the pipe boundary.
+    & tar -c --use-compress-program=zstd -f $BACKUP_FILE -C $INSTALL_DIR R5/Saved
     if ($LASTEXITCODE -ne 0) {
-        Write-Log "ERROR: tar+zstd failed: $tarOutput"
+        Write-Log "ERROR: tar+zstd failed (exit $LASTEXITCODE)"
         exit 1
     }
 } else {
