@@ -1,5 +1,4 @@
-# start.ps1 - Start the refactored Windrose Telegram bot from repo root.
-# Uses windrose_bot.main (bot/ is deprecated).
+# start.ps1 - Start the Windrose game server service and the Telegram bot.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -12,6 +11,7 @@ $LOG_DIR     = "$REPO_DIR\logs"
 $LOG_FILE    = "$LOG_DIR\windrose-bot.log"
 $ERR_FILE    = "$LOG_DIR\windrose-bot-error.log"
 $VENV_PYTHON = "$REPO_DIR\.venv\Scripts\python.exe"
+$SVC_NAME    = "Windrose"
 
 function Get-WindroseBotProcesses {
     try {
@@ -38,6 +38,30 @@ if ($legacySvc -and $legacySvc.Status -eq 'Running') {
     exit 1
 }
 
+# --- 1. Start the Windrose game server service ---
+$svc = Get-Service -Name $SVC_NAME -ErrorAction SilentlyContinue
+if (-not $svc) {
+    Write-Host "WARNING: Windows service '$SVC_NAME' not found — skipping game server start." -ForegroundColor Yellow
+} elseif ($svc.Status -eq 'Running') {
+    Write-Host "Game server is already running."
+} else {
+    Write-Host "Starting Windrose game server service..."
+    Start-Service -Name $SVC_NAME -ErrorAction SilentlyContinue
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline) {
+        $svc.Refresh()
+        if ($svc.Status -eq 'Running') { break }
+        Start-Sleep -Milliseconds 500
+    }
+    $svc.Refresh()
+    if ($svc.Status -eq 'Running') {
+        Write-Host "Game server started."
+    } else {
+        Write-Host "WARNING: Game server did not reach Running state (status: $($svc.Status))." -ForegroundColor Yellow
+    }
+}
+
+# --- 2. Start the Telegram bot ---
 if (-not (Test-Path $BOT_MAIN)) {
     Write-Error "ERROR: Missing $BOT_MAIN"
     exit 1

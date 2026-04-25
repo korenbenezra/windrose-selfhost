@@ -15,7 +15,7 @@ Setup for running a Windrose dedicated server on Windows Server / Windows 10/11 
 Open PowerShell **as Administrator**:
 
 ```powershell
-git clone <your-repo-url> windrose-selfhost
+git clone https://github.com/korenbenezra/windrose-selfhost.git windrose-selfhost
 cd windrose-selfhost
 
 # Install dependencies (SteamCMD, Python 3, NSSM, zstd)
@@ -57,24 +57,21 @@ nssm restart Windrose
 ## Optional: Telegram Bot
 
 ```powershell
-# Install bot dependencies and create the .env file
-.\scripts\install_bot.ps1 -HomeDir $env:USERPROFILE
+# Install bot dependencies and configure .env interactively
+.\install.ps1
 
-# Edit the .env file
-notepad "$env:USERPROFILE\windrose-telegram-bot\.env"
+# Start the game server + bot
+.\start.ps1
 
-# Register and start the bot service
-.\scripts\install_service.ps1 -HomeDir $env:USERPROFILE
-
-Start-Service WindroseBot
-Get-Service WindroseBot
+# Stop both
+.\stop.ps1
 ```
 
-Set these in `.env`:
-- `BOT_TOKEN`
-- `ADMIN_IDS`
-- `NOTIFY_CHAT_IDS`
-- `LOG_PATH`
+Set these in `.env` (the installer will prompt for them):
+- `BOT_TOKEN` — token from [@BotFather](https://t.me/BotFather)
+- `ADMIN_IDS` — your Telegram user ID (message [@userinfobot](https://t.me/userinfobot) to find it)
+- `NOTIFY_CHAT_IDS` — same as `ADMIN_IDS` if you want alerts sent to yourself
+- `LOG_PATH` — path to the Windrose server log file
 
 ## Optional: Automation (backup/update/healthcheck)
 

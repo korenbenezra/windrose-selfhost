@@ -13,3 +13,4 @@ docs/
 windrose_bot.pid
 state.json
 logs/
+audit.jsonl

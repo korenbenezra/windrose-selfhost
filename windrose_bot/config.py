@@ -50,7 +50,8 @@ DEVELOPER_CHAT_ID: int = int(os.environ.get("DEVELOPER_CHAT_ID", "0"))
 RATE_LIMIT_MESSAGES_PER_MINUTE: int = int(os.environ.get("RATE_LIMIT_MESSAGES_PER_MINUTE", "20"))
 
 _SCRIPTS_DIR = Path(os.environ.get(
-    "WINDROSE_SCRIPTS_DIR", r"D:\repositories\windrose-selfhost\scripts"
+    "WINDROSE_SCRIPTS_DIR",
+    str(Path(__file__).parent.parent / "scripts")
 ))
 BACKUP_SCRIPT = str(_SCRIPTS_DIR / "backup_world.ps1")
 UPDATE_SCRIPT = str(_SCRIPTS_DIR / "update_windrose.ps1")
